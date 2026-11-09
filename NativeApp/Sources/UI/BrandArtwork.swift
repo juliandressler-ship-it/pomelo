@@ -48,7 +48,8 @@ enum BrandArtwork {
     private static func drawTemplate(_ ctx: CGContext) {
         let ink = NSColor.black
         ring(ctx, radius: 380, width: 72, color: ink)
-        segments(ctx, rIn: 90, rOut: 316, gapDeg: 12, round: 40, active: ink, rest: ink.withAlphaComponent(0.35))
+        // Bei 16 bis 18 pt: weniger, aber klarere Formen; das aktive Segment trägt die Aussage.
+        segments(ctx, rIn: 110, rOut: 300, gapDeg: 18, round: 48, active: ink, rest: ink.withAlphaComponent(0.3))
     }
 
     // MARK: Bausteine

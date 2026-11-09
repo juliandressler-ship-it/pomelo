@@ -83,10 +83,11 @@ struct NotchJobRow: View {
                 Spacer(minLength: 5)
                 if job.status.isFinished {
                     Image(systemName: failed ? "exclamationmark.circle.fill" : job.status == .cancelled ? "xmark.circle.fill" : "checkmark.circle.fill")
-                        .foregroundStyle(failed ? .red : .green)
+                        .foregroundStyle(failed ? .red : job.status == .cancelled ? .gray : Theme.accent)
                 } else {
                     Text("\(Int(min(max(job.progress, 0), 1) * 100))%")
-                        .font(.system(size: 10, design: .monospaced)).foregroundStyle(.white.opacity(0.65))
+                        .font(.system(size: 11)).monospacedDigit().foregroundStyle(.white.opacity(0.65))
+                    SegmentProgress(fraction: min(max(job.progress, 0), 1), size: 16, track: .white.opacity(0.2))
                     Button(action: cancel) { Image(systemName: "xmark.circle.fill") }
                         .buttonStyle(.plain).help("Cancel this job").accessibilityLabel("Cancel \(job.detail)")
                 }
@@ -94,9 +95,6 @@ struct NotchJobRow: View {
             Text(detail).font(.system(size: 10)).foregroundStyle(failed ? .red : .white.opacity(0.6)).lineLimit(1).help(detail)
             if job.status == .done && !job.outputs.isEmpty {
                 JobOutputActions(job: job)
-            } else {
-                ProgressView(value: job.status == .done ? 1 : min(max(job.progress, 0), 1))
-                    .tint(Theme.accent).progressViewStyle(.linear).controlSize(.mini)
             }
         }.foregroundStyle(.white).frame(height: 48)
     }

@@ -109,7 +109,7 @@ final class JobRunner: ObservableObject {
                 job.progress = 1
                 job.status = .done
                 DiagnosticLog.log("job done: \(job.detail) -> \(outputs.map(\.lastPathComponent))")
-                if AppSettings.shared.revealInFinder, !outputs.isEmpty {
+                if AppSettings.shared.revealInFinder, !outputs.isEmpty, !JobRunner.onlyOnDesktop(outputs) {
                     NSWorkspace.shared.activateFileViewerSelecting(outputs)
                 }
             } catch is CancellationError {
@@ -158,6 +158,13 @@ final class JobRunner: ObservableObject {
 
     func run(title: String, detail: String, symbol: String = "arrow.triangle.2.circlepath", work: @escaping (@escaping (Double) -> Void) async throws -> [URL]) {
         enqueue(Job(title: title, detail: detail, symbol: symbol), work: work)
+    }
+
+    /// Liegen alle Ergebnisse direkt auf dem Schreibtisch, sieht man sie schon; kein Finder-Fenster öffnen.
+    nonisolated static func onlyOnDesktop(_ outputs: [URL], settings: AppSettings = .shared) -> Bool {
+        guard settings.skipRevealOnDesktop else { return false }
+        let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask)[0].standardizedFileURL
+        return outputs.allSatisfy { $0.deletingLastPathComponent().standardizedFileURL == desktop }
     }
 
     func watchWheel(label: String? = nil, direction: CGFloat = 0) {
@@ -433,17 +440,23 @@ struct JobPillView: View {
     }
     private var working: Bool { presentation.jobs.contains { !$0.status.isFinished } }
     private var failed: Bool { presentation.jobs.contains { if case .failed = $0.status { return true }; return false } }
+    /// Gesamtfortschritt aller Aufträge für die Mandarinenscheibe.
+    private var aggregate: Double {
+        guard !presentation.jobs.isEmpty else { return 0 }
+        let sum = presentation.jobs.reduce(0.0) { $0 + ($1.status.isFinished ? 1 : min(max($1.progress, 0), 1)) }
+        return sum / Double(presentation.jobs.count)
+    }
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            CitrusCompanion()
+            SegmentProgress(fraction: aggregate, failed: failed, size: 40, track: .white.opacity(0.18))
             VStack(alignment: .leading, spacing: 7) {
                 HStack {
-                    Text(presentation.jobs.isEmpty ? "READY WHEN YOU ARE" : companion.caption.uppercased())
-                        .font(.system(size: 8, weight: .bold, design: .monospaced)).tracking(1.5)
-                        .foregroundStyle(.white.opacity(0.5))
+                    Text(presentation.jobs.isEmpty ? "Ready" : companion.caption)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.6))
                     Spacer()
                     if presentation.jobs.count > 1 {
-                        Text("\(presentation.jobs.count) files").font(.system(size: 9)).foregroundStyle(.white.opacity(0.5))
+                        Text("\(presentation.jobs.count) files").font(.system(size: 11)).monospacedDigit().foregroundStyle(.white.opacity(0.5))
                     }
                     if !working {
                         Button { runner.dismissAll() } label: { Image(systemName: "xmark") }
@@ -452,7 +465,7 @@ struct JobPillView: View {
                 }
                 if presentation.jobs.isEmpty {
                     Text(companion.caption).font(.system(size: 12)).foregroundStyle(.white).lineLimit(2)
-                    Text("Drop a file onto your choice").font(.system(size: 10)).foregroundStyle(.white.opacity(0.5))
+                    Text("Drop the files on a segment").font(.system(size: 11)).foregroundStyle(.white.opacity(0.5))
                 }
                 ScrollView {
                     VStack(spacing: 8) {
@@ -584,7 +597,7 @@ struct JobCardView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 Text(job.title)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 14, weight: .medium))
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 trailing
@@ -596,10 +609,6 @@ struct JobCardView: View {
                 .truncationMode(.middle)
             if job.status == .done && !job.outputs.isEmpty {
                 JobOutputActions(job: job)
-            } else {
-                ProgressView(value: fraction)
-                    .progressViewStyle(.linear)
-                    .controlSize(.small)
             }
         }
     }
@@ -628,7 +637,7 @@ struct JobCardView: View {
         case .cancelled:
             Image(systemName: "xmark.circle").foregroundStyle(.secondary)
         case .waiting, .running:
-            EmptyView()
+            SegmentProgress(fraction: Double(fraction), size: 20)
         }
     }
 }

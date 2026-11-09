@@ -35,6 +35,11 @@ enum ScreenshotDriver {
         }
     }
 
+    /// Nimmt nur das Fortschrittsfenster der App auf, nie den ganzen Bildschirm.
+    @MainActor private static var progressWindowNumber: Int {
+        NSApp.windows.first { $0.isVisible && ($0 is JobHUDPanel || $0 is JobPillPanel) }?.windowNumber ?? 0
+    }
+
     private static func capture(into directory: URL, radial: RadialController) async throws {
         let fm = FileManager.default
         try fm.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -90,13 +95,13 @@ enum ScreenshotDriver {
             let suffix = mode == .light ? "" : "-dark"
             radial.presentPicker(for: [photo], advanced: false)
             radial.highlight(5)
-            try await Task.sleep(nanoseconds: 1_500_000_000)
-            try await screencapture(["-x", directory.appendingPathComponent("radial-convert\(suffix).png").path])
+            try await Task.sleep(nanoseconds: 2_000_000_000)
+            try await screencapture(["-x", "-o", "-l", "\(radial.panelWindowNumber ?? 0)", directory.appendingPathComponent("radial-convert\(suffix).png").path])
             radial.hide()
             radial.presentPicker(for: [photo], advanced: true)
             radial.highlight(0)
             try await Task.sleep(nanoseconds: 1_000_000_000)
-            try await screencapture(["-x", directory.appendingPathComponent("radial-tools\(suffix).png").path])
+            try await screencapture(["-x", "-o", "-l", "\(radial.panelWindowNumber ?? 0)", directory.appendingPathComponent("radial-tools\(suffix).png").path])
             radial.hide()
         }
 
@@ -123,7 +128,7 @@ enum ScreenshotDriver {
                 return []
             }
             try await Task.sleep(nanoseconds: 1_500_000_000)
-            try await screencapture("progress-\(style.rawValue)", ["-x", directory.appendingPathComponent("progress-\(style.rawValue).png").path])
+            try await screencapture("progress-\(style.rawValue)", ["-x", "-o", "-l", "\(progressWindowNumber)", directory.appendingPathComponent("progress-\(style.rawValue).png").path])
             if style == .pill {
                 JobRunner.shared.run(title: "Converting to PNG", detail: "photo.heic", symbol: "photo") { progress in
                     progress(0.62)
@@ -131,7 +136,7 @@ enum ScreenshotDriver {
                     return []
                 }
                 try await Task.sleep(nanoseconds: 1_500_000_000)
-                try await screencapture("progress-pill-multi", ["-x", directory.appendingPathComponent("progress-pill-multi.png").path])
+                try await screencapture("progress-pill-multi", ["-x", "-o", "-l", "\(progressWindowNumber)", directory.appendingPathComponent("progress-pill-multi.png").path])
                 await gate.signal()
             }
             await gate.signal()
@@ -139,11 +144,28 @@ enum ScreenshotDriver {
         }
         AppSettings.shared.progressStyle = previousStyle
 
-        let settings = AppDelegate.makeSettingsWindow()
-        settings.makeKeyAndOrderFront(nil)
-        try await Task.sleep(nanoseconds: 1_500_000_000)
-        try await screencapture("settings", ["-x", "-o", "-l", "\(settings.windowNumber)", directory.appendingPathComponent("settings.png").path])
-        settings.orderOut(nil)
+        for mode in [AppearanceMode.light, .dark] {
+            NSApp.appearance = mode.appearance
+            let suffix = mode == .light ? "" : "-dark"
+            for tab in SettingsTab.allCases {
+                let settings = AppDelegate.makeSettingsWindow(tab: tab)
+                settings.makeKeyAndOrderFront(nil)
+                try await Task.sleep(nanoseconds: 1_200_000_000)
+                try await screencapture("settings-\(tab.rawValue)", ["-x", "-o", "-l", "\(settings.windowNumber)", directory.appendingPathComponent("settings-\(tab.rawValue)\(suffix).png").path])
+                settings.orderOut(nil)
+            }
+            let welcome = AppDelegate.makeWelcomeWindow(openSettings: {})
+            welcome.center()
+            welcome.makeKeyAndOrderFront(nil)
+            try await Task.sleep(nanoseconds: 1_200_000_000)
+            try await screencapture("welcome", ["-x", "-o", "-l", "\(welcome.windowNumber)", directory.appendingPathComponent("welcome\(suffix).png").path])
+            welcome.orderOut(nil)
+        }
+        NSApp.appearance = AppearanceMode.light.appearance
+        if ProcessInfo.processInfo.environment["OPEN_TANGERINE_SCREENSHOTS_SKIP_TOOLS"] != nil {
+            try? fm.removeItem(at: samples)
+            return
+        }
 
         for tool in ToolID.allCases {
             guard let files = inputs[tool] else { continue }

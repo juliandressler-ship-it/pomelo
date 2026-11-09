@@ -85,6 +85,40 @@ enum NotchSurface: String, CaseIterable, Identifiable {
     var title: String { self == .black ? "Pure black" : "Glass" }
 }
 
+/// Zusatztaste, die beim Ziehen ein Rad öffnet.
+enum DragKey: String, CaseIterable, Identifiable {
+    case shift, command, option, control
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .shift: return "Shift"
+        case .command: return "Command"
+        case .option: return "Option"
+        case .control: return "Control"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .shift: return "⇧"
+        case .command: return "⌘"
+        case .option: return "⌥"
+        case .control: return "⌃"
+        }
+    }
+
+    var flag: NSEvent.ModifierFlags {
+        switch self {
+        case .shift: return .shift
+        case .command: return .command
+        case .option: return .option
+        case .control: return .control
+        }
+    }
+}
+
 final class AppSettings: ObservableObject {
     static let shared = AppSettings()
 
@@ -133,6 +167,40 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(jpegQuality, forKey: "jpegQuality") }
     }
 
+    /// Tasten für die drei Räder. Sie dürfen sich nicht doppeln; setKey tauscht bei Konflikt.
+    @Published private(set) var convertKey: DragKey { didSet { defaults.set(convertKey.rawValue, forKey: "convertKey") } }
+    @Published private(set) var toolsKey: DragKey { didSet { defaults.set(toolsKey.rawValue, forKey: "toolsKey") } }
+    @Published private(set) var actionsKey: DragKey { didSet { defaults.set(actionsKey.rawValue, forKey: "actionsKey") } }
+
+    enum Wheel { case convert, tools, actions }
+
+    func key(for wheel: Wheel) -> DragKey {
+        switch wheel {
+        case .convert: return convertKey
+        case .tools: return toolsKey
+        case .actions: return actionsKey
+        }
+    }
+
+    func setKey(_ key: DragKey, for wheel: Wheel) {
+        let previous = self.key(for: wheel)
+        guard key != previous else { return }
+        // Belegt ein anderes Rad die Taste schon, bekommt es die alte Taste.
+        if convertKey == key { convertKey = previous }
+        if toolsKey == key { toolsKey = previous }
+        if actionsKey == key { actionsKey = previous }
+        switch wheel {
+        case .convert: convertKey = key
+        case .tools: toolsKey = key
+        case .actions: actionsKey = key
+        }
+    }
+
+    @Published var soundEnabled: Bool { didSet { defaults.set(soundEnabled, forKey: "soundEnabled") } }
+    @Published var hapticsEnabled: Bool { didSet { defaults.set(hapticsEnabled, forKey: "hapticsEnabled") } }
+    /// Ergebnisse auf dem Schreibtisch nicht zusätzlich in einem Finder-Fenster zeigen.
+    @Published var skipRevealOnDesktop: Bool { didSet { defaults.set(skipRevealOnDesktop, forKey: "skipRevealOnDesktop") } }
+
     @Published var appearanceMode: AppearanceMode {
         didSet {
             defaults.set(appearanceMode.rawValue, forKey: "appearanceMode")
@@ -157,6 +225,16 @@ final class AppSettings: ObservableObject {
         ffmpegPath = defaults.string(forKey: "ffmpegPath") ?? ""
         jpegQuality = defaults.object(forKey: "jpegQuality") as? Double ?? 0.9
         appearanceMode = AppearanceMode(rawValue: defaults.string(forKey: "appearanceMode") ?? "") ?? .system
+        var keys = [DragKey(rawValue: defaults.string(forKey: "convertKey") ?? "") ?? .shift,
+                    DragKey(rawValue: defaults.string(forKey: "toolsKey") ?? "") ?? .command,
+                    DragKey(rawValue: defaults.string(forKey: "actionsKey") ?? "") ?? .control]
+        if Set(keys).count < 3 { keys = [.shift, .command, .control] }
+        convertKey = keys[0]
+        toolsKey = keys[1]
+        actionsKey = keys[2]
+        soundEnabled = defaults.object(forKey: "soundEnabled") as? Bool ?? true
+        hapticsEnabled = defaults.object(forKey: "hapticsEnabled") as? Bool ?? true
+        skipRevealOnDesktop = defaults.object(forKey: "skipRevealOnDesktop") as? Bool ?? true
         if #available(macOS 13.0, *) {
             launchAtLogin = SMAppService.mainApp.status == .enabled
         } else {

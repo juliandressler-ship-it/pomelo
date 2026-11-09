@@ -1,17 +1,38 @@
 import AppKit
 import SwiftUI
 
+/// Gestaltungsgrundlagen (Phase 2).
+/// Richtung: ruhige, native macOS-Oberfläche. Farbe gibt es nur im Rad, im Icon
+/// und im Fortschritt. Erkennungszeichen ist das gefüllte Mandarinensegment.
 enum Theme {
-    static let accentNS = NSColor(srgbRed: 1.0, green: 0.36, blue: 0.0, alpha: 1)
+    /// Mandarinenorange für Symbole und Flächen ohne Text darauf.
+    static let accentNS = NSColor(srgbRed: 0.941, green: 0.353, blue: 0.157, alpha: 1)   // #F05A28
     static let accent = Color(nsColor: accentNS)
+    /// Dunklere Stufe für Flächen mit weißer Schrift (Kontrast über 4.5:1).
+    static let accentStrong = Color(.sRGB, red: 0.851, green: 0.282, blue: 0.059, opacity: 1) // #D9480F
 
     static let ink = Color(nsColor: .labelColor)
     static let inkSecondary = Color(nsColor: .secondaryLabelColor)
     static let cardCorner: CGFloat = 12
 
+    /// Eine Kurve und wenige Dauern für die ganze App.
+    static let ease = Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.18)
+    static let enter = Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.36)
+    /// Federn nur für das Rad (Öffnen und Segmentwechsel), wie im Plan verlangt.
+    static let wheelSpring = Animation.spring(response: 0.3, dampingFraction: 0.82)
+
     static func isDark(_ appearance: NSAppearance) -> Bool {
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
     }
+
+    /// Segmentfläche im Rad: hell fast weiß, dunkel ein Grauschritt.
+    static let segment = Color(nsColor: NSColor(name: nil) { appearance in
+        isDark(appearance) ? NSColor(white: 0.24, alpha: 0.92) : NSColor(white: 1, alpha: 0.86)
+    })
+    /// Pille in der Radmitte und Oberseite der Tastenkappen.
+    static let pill = Color(nsColor: NSColor(name: nil) { appearance in
+        isDark(appearance) ? NSColor(white: 0.17, alpha: 1) : NSColor(white: 1, alpha: 1)
+    })
 }
 
 struct CardSurface: ViewModifier {
@@ -49,56 +70,126 @@ struct SegmentedPicker<T: Hashable>: View {
     }
 }
 
+// MARK: - Tastenkappe
 
-/// A brief, state-driven illustration: no permanent animation timer.
-struct FileOrbitGraphic: View {
-    let tab: SettingsTab
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var appeared = false
-    private var angle: Double { Double(SettingsTab.allCases.firstIndex(of: tab) ?? 0) * 90 }
+/// Tastenkappe mit leichtem 3D-Effekt: helle Oberseite, dunklere Kante darunter.
+struct Keycap: View {
+    let key: DragKey
+    var size: Size = .regular
+    var highlighted = false
+
+    enum Size { case small, regular, large }
+
     var body: some View {
-        ZStack {
-            Circle().fill(Theme.accent.opacity(0.07)).frame(width: 132, height: 132)
-            Circle().strokeBorder(Theme.accent.opacity(0.17), style: StrokeStyle(lineWidth: 1, dash: [3, 6]))
-                .frame(width: 124, height: 124)
-                .rotationEffect(.degrees(reduceMotion ? 0 : angle))
-            ForEach(0..<3) { index in
-                let radians = Double(index) * .pi * 2 / 3 - .pi / 2
-                Image(systemName: ["photo", "waveform", "doc.text"][index])
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Theme.accent)
-                    .frame(width: 29, height: 29)
-                    .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 9))
-                    .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Theme.accent.opacity(0.16)))
-                    .offset(x: cos(radians) * 61, y: sin(radians) * 61)
+        let m = metrics
+        let shape = RoundedRectangle(cornerRadius: m.radius, style: .continuous)
+        HStack(spacing: 4) {
+            Text(key.symbol).font(.system(size: m.symbol, weight: .medium))
+            if size != .small {
+                Text(key.title).font(.system(size: m.text, weight: .medium))
             }
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Theme.accent.gradient)
-                .frame(width: 70, height: 78)
-                .rotationEffect(.degrees(reduceMotion ? 0 : appeared ? -7 : -15))
-                .shadow(color: Theme.accent.opacity(0.23), radius: 12, x: 0, y: 8)
-            Image(systemName: tab == .general ? "arrow.triangle.2.circlepath" : tab.symbol)
-                .font(.system(size: 28, weight: .medium))
-                .foregroundStyle(.white)
-                .contentTransition(.symbolEffect(.replace.offUp))
         }
-        .scaleEffect(reduceMotion ? 1 : appeared ? 1 : 0.88)
-        .opacity(appeared ? 1 : 0)
-        .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.6, dampingFraction: 0.7), value: appeared)
-        .animation(reduceMotion ? nil : .smooth(duration: 0.5), value: tab)
-        .onAppear { appeared = true }
+        .foregroundStyle(highlighted ? Color.white : Color.primary)
+        .padding(.horizontal, m.padding)
+        .frame(minWidth: m.height, minHeight: m.height)
+        .background {
+            ZStack {
+                shape.fill(highlighted ? Color.black.opacity(0.28) : Color.primary.opacity(0.18))
+                    .offset(y: m.depth)
+                shape.fill(highlighted ? Theme.accentStrong : Theme.pill)
+                shape.strokeBorder(Color.primary.opacity(highlighted ? 0 : 0.10), lineWidth: 1)
+                shape.strokeBorder(Color.white.opacity(highlighted ? 0.28 : 0.7), lineWidth: 1)
+                    .mask(LinearGradient(colors: [.white, .clear], startPoint: .top, endPoint: .center))
+            }
+        }
+        .padding(.bottom, m.depth)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(key.title)
+    }
+
+    private var metrics: (symbol: CGFloat, text: CGFloat, height: CGFloat, padding: CGFloat, radius: CGFloat, depth: CGFloat) {
+        switch size {
+        case .small: return (11, 11, 20, 5, 5, 1.5)
+        case .regular: return (13, 12, 26, 8, 6, 2)
+        case .large: return (20, 15, 44, 14, 10, 3)
+        }
     }
 }
 
-struct SettingsPressStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var hovering = false
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .background(Color.primary.opacity(hovering ? 0.045 : 0), in: RoundedRectangle(cornerRadius: 13))
-            .scaleEffect(reduceMotion ? 1 : configuration.isPressed ? 0.97 : 1)
-            .animation(.easeOut(duration: 0.14), value: configuration.isPressed)
-            .animation(.easeOut(duration: 0.14), value: hovering)
-            .onHover { hovering = $0 }
+// MARK: - Segment-Fortschritt (Erkennungszeichen)
+
+/// Mandarinenscheibe als Fortschrittsanzeige: sieben Segmente füllen sich nacheinander.
+struct SegmentProgress: View {
+    var fraction: Double
+    var failed = false
+    var size: CGFloat = 22
+    var track: Color = Color.primary.opacity(0.16)
+
+    var body: some View {
+        let count = 7
+        let filled = min(max(fraction, 0), 1) * Double(count)
+        ZStack {
+            Circle().strokeBorder(track, lineWidth: max(1, size * 0.07))
+            ForEach(0..<count, id: \.self) { index in
+                let amount = min(max(filled - Double(index), 0), 1)
+                SliceShape(index: index, count: count).fill(track)
+                SliceShape(index: index, count: count)
+                    .fill(failed ? Color.red : Theme.accent)
+                    .opacity(failed ? 1 : amount)
+            }
+        }
+        .frame(width: size, height: size)
+        .animation(Theme.ease, value: fraction)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(failed ? "Failed" : "\(Int((min(max(fraction, 0), 1) * 100).rounded())) percent")
+    }
+}
+
+/// Ein Segment der Scheibe, 0 = oben, im Uhrzeigersinn.
+struct SliceShape: Shape {
+    var index: Int
+    var count: Int
+
+    func path(in rect: CGRect) -> Path {
+        let c = CGPoint(x: rect.midX, y: rect.midY)
+        let r = min(rect.width, rect.height) / 2
+        let outer = r * 0.74, inner = r * 0.12
+        let step = 2 * Double.pi / Double(count)
+        let gap = 0.16
+        let start = -Double.pi / 2 + step * Double(index) - step / 2 + gap / 2
+        let end = start + step - gap
+        var path = Path()
+        path.addArc(center: c, radius: outer, startAngle: .radians(start), endAngle: .radians(end), clockwise: false)
+        path.addArc(center: c, radius: inner, startAngle: .radians(end), endAngle: .radians(start), clockwise: true)
+        path.closeSubpath()
+        return path
+    }
+}
+
+// MARK: - Ton und Haptik
+
+/// Rückmeldung beim Überfahren und Ablegen. Ton und Trackpad-Haptik sind getrennt schaltbar.
+@MainActor
+enum Feedback {
+    static func hover() {
+        let settings = AppSettings.shared
+        if settings.hapticsEnabled {
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        }
+        if settings.soundEnabled { play("Tink", volume: 0.12) }
+    }
+
+    static func drop() {
+        let settings = AppSettings.shared
+        if settings.hapticsEnabled {
+            NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
+        }
+        if settings.soundEnabled { play("Pop", volume: 0.35) }
+    }
+
+    private static func play(_ name: String, volume: Float) {
+        guard let sound = NSSound(named: NSSound.Name(name))?.copy() as? NSSound else { return }
+        sound.volume = volume
+        sound.play()
     }
 }

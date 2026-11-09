@@ -83,5 +83,37 @@ final class UpdateResponse: URLProtocol {
         await completed.value
         precondition(state.phase == .success)
         print("PASS version ordering, invalid version rejection, gaze bounds, interrupted and completion transitions")
+
+        // Nachbau Phase 2: Tasten frei wählbar, nie doppelt belegt
+        let keys = AppSettings.shared
+        let saved = (keys.key(for: .convert), keys.key(for: .tools), keys.key(for: .actions))
+        keys.setKey(.shift, for: .convert); keys.setKey(.command, for: .tools); keys.setKey(.control, for: .actions)
+        keys.setKey(.command, for: .convert)
+        precondition(keys.key(for: .convert) == .command && keys.key(for: .tools) == .shift, "Konflikt muss Tasten tauschen")
+        precondition(Set<DragKey>([keys.key(for: .convert), keys.key(for: .tools), keys.key(for: .actions)]).count == 3)
+        keys.setKey(.shift, for: .convert); keys.setKey(.command, for: .tools); keys.setKey(.control, for: .actions)
+        var wheel = DragMonitor.wheelState(flags: [.shift], settings: keys)
+        precondition(wheel.shift && !wheel.option, "Shift öffnet das Konvertierungsrad")
+        wheel = DragMonitor.wheelState(flags: [.command], settings: keys)
+        precondition(wheel.shift && wheel.option, "Command öffnet das Werkzeugrad")
+        wheel = DragMonitor.wheelState(flags: [.option, .shift], settings: keys)
+        precondition(wheel.shift && wheel.option, "Option + Shift bleibt zweiter Weg zum Werkzeugrad")
+        wheel = DragMonitor.wheelState(flags: [.option], settings: keys)
+        precondition(!wheel.shift, "Option allein öffnet kein Rad")
+        keys.setKey(.option, for: .tools)
+        wheel = DragMonitor.wheelState(flags: [.option], settings: keys)
+        precondition(wheel.shift && wheel.option, "Neu belegte Taste öffnet das Werkzeugrad")
+        keys.setKey(saved.0, for: .convert); keys.setKey(saved.1, for: .tools); keys.setKey(saved.2, for: .actions)
+
+        // Schreibtisch: kein zusätzliches Finder-Fenster
+        let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask)[0]
+        let previousSkip = keys.skipRevealOnDesktop
+        keys.skipRevealOnDesktop = true
+        precondition(JobRunner.onlyOnDesktop([desktop.appendingPathComponent("a.png")], settings: keys))
+        precondition(!JobRunner.onlyOnDesktop([desktop.appendingPathComponent("a.png"), URL(fileURLWithPath: "/tmp/b.png")], settings: keys))
+        keys.skipRevealOnDesktop = false
+        precondition(!JobRunner.onlyOnDesktop([desktop.appendingPathComponent("a.png")], settings: keys))
+        keys.skipRevealOnDesktop = previousSkip
+        print("PASS configurable wheel keys without duplicates, Option+Shift fallback, desktop reveal rule")
     }
 }

@@ -4,8 +4,9 @@ import UniformTypeIdentifiers
 
 enum SettingsTab: String, CaseIterable, Identifiable {
     case general
-    case appearance
+    case wheel
     case conversion
+    case appearance
     case about
 
     var id: String { rawValue }
@@ -13,8 +14,9 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .general: return "General"
-        case .appearance: return "Appearance"
+        case .wheel: return "Keys & Feedback"
         case .conversion: return "Formats"
+        case .appearance: return "Appearance"
         case .about: return "About"
         }
     }
@@ -22,8 +24,9 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .general: return "gearshape"
-        case .appearance: return "paintbrush"
+        case .wheel: return "keyboard"
         case .conversion: return "arrow.triangle.2.circlepath"
+        case .appearance: return "circle.lefthalf.filled"
         case .about: return "info.circle"
         }
     }
@@ -34,110 +37,55 @@ final class SettingsTabModel: ObservableObject {
     @Published var tab: SettingsTab = .general
 }
 
+/// Einstellungen im Stil der macOS-Systemeinstellungen (Phase 2):
+/// Seitenleiste links, gruppierte Liste rechts, Orange nur für die Auswahl.
 struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
     @ObservedObject var model: SettingsTabModel
     @State private var ffmpegHealth: FFmpeg.Health = .missing
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Namespace private var selection
+    static let width: CGFloat = 760
+    static let height: CGFloat = 560
 
-    static let width: CGFloat = 820
-    static let height: CGFloat = 620
+    private var version: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development"
+    }
 
     var body: some View {
-        HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 26) {
-                HStack(spacing: 10) {
-                    Image(nsImage: BrandArtwork.image(size: 40)).resizable().frame(width: 40, height: 40)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Open").font(.system(size: 15, weight: .medium))
-                        Text("Tangerine").font(.system(size: 18, weight: .bold))
-                    }
+        NavigationSplitView {
+            List(selection: Binding<SettingsTab?>(get: { model.tab }, set: { if let tab = $0 { model.tab = tab } })) {
+                ForEach(SettingsTab.allCases) { tab in
+                    Label(tab.title, systemImage: tab.symbol).tag(tab)
                 }
-                .padding(.top, 20)
-                VStack(spacing: 6) {
-                    ForEach(SettingsTab.allCases) { tab in
-                        Button {
-                            withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.38, dampingFraction: 0.85)) {
-                                model.tab = tab
-                            }
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: tab.symbol).font(.system(size: 16, weight: .medium)).frame(width: 22)
-                                Text(tab.title).font(.system(size: 14, weight: model.tab == tab ? .semibold : .medium))
-                                Spacer()
-                            }
-                            .padding(.horizontal, 14).padding(.vertical, 13)
-                            .foregroundStyle(model.tab == tab ? Color.white : Color.primary)
-                            .background {
-                                if model.tab == tab {
-                                    RoundedRectangle(cornerRadius: 13)
-                                        .fill(Theme.accent.gradient)
-                                        .matchedGeometryEffect(id: "sidebar", in: selection)
-                                }
-                            }
-                            .contentShape(RoundedRectangle(cornerRadius: 13))
-                        }
-                        .buttonStyle(SettingsPressStyle())
-                        .accessibilityAddTraits(model.tab == tab ? .isSelected : [])
-                    }
-                }
-                Spacer()
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("On your Mac", systemImage: "lock.shield")
-                        .font(.system(size: 12, weight: .semibold))
-                    Text("Your files. Your workflow.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Text("OPEN SOURCE  /  \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development")")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .tracking(1.2).foregroundStyle(.tertiary)
-                }
-                .padding(.bottom, 12)
             }
-            .padding(20).frame(width: 205)
-            .background(reduceTransparency ? Color(nsColor: .windowBackgroundColor) : Color(nsColor: .controlBackgroundColor).opacity(0.65))
-            Divider()
-            VStack(spacing: 0) {
-                HStack(alignment: .center, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("MAKE ROOM FOR FLOW")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .tracking(2).foregroundStyle(Theme.accent)
-                        Text(model.tab.title)
-                            .font(.system(size: 34, weight: .bold, design: .rounded))
-                            .contentTransition(.numericText())
-                        Text(tabDescription)
-                            .font(.system(size: 13)).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+            .listStyle(.sidebar)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                HStack(spacing: 8) {
+                    Image(nsImage: BrandArtwork.image(size: 40)).resizable().frame(width: 20, height: 20)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Open Tangerine").font(.system(size: 12, weight: .medium))
+                        Text("\(version) · runs offline").font(.system(size: 11)).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 0)
-                    FileOrbitGraphic(tab: model.tab)
-                        .frame(width: 155, height: 145)
-                        .accessibilityHidden(true)
                 }
-                .padding(.horizontal, 30).padding(.top, 12).padding(.bottom, 4)
-                ZStack {
-                    Form {
-                        switch model.tab {
-                        case .general: general
-                        case .appearance: appearance
-                        case .conversion: conversion
-                        case .about: about
-                        }
-                    }
-                    .formStyle(.grouped)
-                    .scrollContentBackground(.hidden)
-                    .id(model.tab)
-                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 9)))
+                .padding(.horizontal, 16).padding(.vertical, 12)
+            }
+            .navigationSplitViewColumnWidth(min: 200, ideal: 210, max: 240)
+        } detail: {
+            Form {
+                switch model.tab {
+                case .general: general
+                case .wheel: wheel
+                case .conversion: conversion
+                case .appearance: appearance
+                case .about: about
                 }
-                .animation(reduceMotion ? .easeOut(duration: 0.15) : .smooth(duration: 0.28), value: model.tab)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background {
-                LinearGradient(colors: [Theme.accent.opacity(0.06), Color(nsColor: .windowBackgroundColor), Color(nsColor: .windowBackgroundColor)], startPoint: .topTrailing, endPoint: .bottomLeading)
-            }
+            .formStyle(.grouped)
+            .navigationTitle(model.tab.title)
+            .id(model.tab)
+            .transition(.opacity)
+            .animation(Theme.ease, value: model.tab)
         }
         .frame(width: Self.width, height: Self.height)
         .tint(Theme.accent)
@@ -146,63 +94,57 @@ struct SettingsView: View {
         .task(id: settings.ffmpegPath) { ffmpegHealth = await FFmpeg.checkHealth() }
     }
 
-    private var tabDescription: String {
-        switch model.tab {
-        case .general: return "A few thoughtful defaults. A smoother day."
-        case .appearance: return "Make your workspace feel like yours."
-        case .conversion: return "Find the balance between detail and size."
-        case .about: return "Small utility. Open possibilities."
-        }
-    }
+    // MARK: General
 
     @ViewBuilder private var general: some View {
-        Section("Output") {
+        Section {
             Picker("Save converted files", selection: $settings.outputLocation) {
                 ForEach(OutputLocation.allCases) { Text($0.title).tag($0) }
             }
-            Toggle("Reveal results in Finder", isOn: $settings.revealInFinder)
-        }
-        Section("General") {
-            Toggle("Start automatically at login", isOn: $settings.launchAtLogin)
-            Text("Keep Open Tangerine ready in the menu bar after you restart and sign in. Move the app to Applications before enabling.")
-                .font(.caption).foregroundStyle(.secondary)
-            if let message = settings.loginMessage {
-                Text(message).font(.caption).foregroundStyle(.orange)
-                Button("Open Login Items…") { settings.openLoginSettings() }
+            Toggle("Show results in Finder", isOn: $settings.revealInFinder)
+            if settings.revealInFinder {
+                Toggle("Skip the Finder window for files on the Desktop", isOn: $settings.skipRevealOnDesktop)
             }
+        } header: {
+            Text("Output")
+        } footer: {
+            Text("Originals are never changed. A new file with the same name gets a number, like “photo 2.png”.")
         }
         Section {
-            LabeledContent("Conversion wheel") {
-                Label("Shift", systemImage: "shift").labelStyle(.titleAndIcon)
+            Toggle("Open at login", isOn: $settings.launchAtLogin)
+            if let message = settings.loginMessage {
+                Text(message).font(.callout).foregroundStyle(.secondary)
+                Button("Open Login Items…") { settings.openLoginSettings() }
             }
-            LabeledContent("Tools wheel") {
-                Label("Command (or Option + Shift)", systemImage: "option").labelStyle(.titleAndIcon)
-            }
-            LabeledContent("File actions", value: "Control")
         } header: {
-            Text("Drag Modifiers")
+            Text("Startup")
         } footer: {
-            Text("Hold the modifier while dragging files in Finder.")
+            Text("Move the app to Applications before you turn this on.")
         }
-        Section("Excluded applications") {
-            Text("Drag shortcuts stay off when a drag starts in these apps. Add CorelDRAW or other design tools here. You can still use Convert Files from the menu bar.")
-                .font(.caption).foregroundStyle(.secondary)
+        Section {
             ForEach(settings.excludedApplications.keys.sorted(), id: \.self) { identifier in
                 HStack {
                     Text(settings.excludedApplications[identifier] ?? identifier)
                     Spacer()
                     Button("Remove", systemImage: "minus.circle") {
                         settings.excludedApplications.removeValue(forKey: identifier)
-                    }.help("Enable drag shortcuts in this application")
+                    }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.borderless)
+                    .help("Turn drag shortcuts back on in this app")
                 }
             }
-            Button("Add Application…", systemImage: "plus.circle", action: addExcludedApplication)
+            Button("Add App…", action: addExcludedApplication)
+        } header: {
+            Text("Apps without drag shortcuts")
+        } footer: {
+            Text("Drags that start in these apps never open a wheel. Convert Files in the menu bar still works.")
         }
     }
 
     private func addExcludedApplication() {
         let panel = NSOpenPanel()
-        panel.title = "Disable drag shortcuts in applications"
+        panel.title = "Turn off drag shortcuts in apps"
         panel.allowedContentTypes = [.applicationBundle]
         panel.directoryURL = URL(fileURLWithPath: "/Applications")
         panel.allowsMultipleSelection = true
@@ -219,38 +161,62 @@ struct SettingsView: View {
         }
     }
 
-    @ViewBuilder private var appearance: some View {
-        Section("Theme") {
-            Picker("Theme", selection: $settings.appearanceMode) {
-                ForEach(AppearanceMode.allCases) { Text($0.title).tag($0) }
-            }
-            .pickerStyle(.segmented)
+    // MARK: Keys & Feedback
+
+    @ViewBuilder private var wheel: some View {
+        Section {
+            keyRow("Conversion wheel", detail: "PNG to JPEG, MP4 to GIF and more", wheel: .convert)
+            keyRow("Tools wheel", detail: "Compress, crop, metadata, PDF tools", wheel: .tools)
+            keyRow("File actions", detail: "Reveal, copy paths, checksum", wheel: .actions)
+        } header: {
+            Text("Keys")
+        } footer: {
+            Text(settings.key(for: .tools) == .command
+                 ? "Hold the key while you drag files in Finder. Option with \(settings.key(for: .convert).title) also opens the tools wheel."
+                 : "Hold the key while you drag files in Finder.")
         }
         Section {
-            Picker("Progress", selection: $settings.progressStyle) {
-                ForEach(ProgressStyle.allCases) { Text($0.title).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            if settings.progressStyle == .pill {
-                Picker("Notch surface", selection: $settings.notchSurface) {
-                    ForEach(NotchSurface.allCases) { Text($0.title).tag($0) }
-                }.pickerStyle(.segmented)
-            }
+            Toggle("Sound", isOn: $settings.soundEnabled)
+            Toggle("Trackpad haptics", isOn: $settings.hapticsEnabled)
         } header: {
-            Text("Progress")
+            Text("Feedback")
         } footer: {
-            Text(settings.progressStyle == .card
-                 ? "A floating card in the top right corner with the file name and percentage."
-                 : "An animated citrus companion below the notch, with file progress and results.")
+            Text("A soft tick when you move over a segment and a pop when you drop. Haptics need a Force Touch trackpad.")
         }
     }
 
+    private func keyRow(_ title: String, detail: String, wheel: AppSettings.Wheel) -> some View {
+        let binding = Binding<DragKey>(get: { settings.key(for: wheel) }, set: { settings.setKey($0, for: wheel) })
+        return HStack(spacing: 12) {
+            Keycap(key: settings.key(for: wheel), size: .small)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Text(detail).font(.callout).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Picker(title, selection: binding) {
+                ForEach(DragKey.allCases) { key in
+                    Text("\(key.symbol)  \(key.title)").tag(key)
+                }
+            }
+            .labelsHidden()
+            .fixedSize()
+        }
+        .animation(Theme.ease, value: settings.key(for: wheel))
+    }
+
+    // MARK: Formats
+
     @ViewBuilder private var conversion: some View {
         Section("Images") {
-            HStack {
-                Text("JPEG / HEIC / WebP quality")
-                Slider(value: $settings.jpegQuality, in: 0.3...1.0)
-                Text("\(Int(settings.jpegQuality * 100))%").contentTransition(.numericText()).monospacedDigit().frame(width: 44, alignment: .trailing)
+            LabeledContent("JPEG, HEIC and WebP quality") {
+                HStack(spacing: 8) {
+                    Slider(value: $settings.jpegQuality, in: 0.3...1.0).frame(width: 160)
+                    Text("\(Int(settings.jpegQuality * 100))%")
+                        .monospacedDigit().foregroundStyle(.secondary)
+                        .frame(width: 40, alignment: .trailing)
+                }
             }
         }
         Section {
@@ -258,85 +224,46 @@ struct SettingsView: View {
                 ForEach(CompressionPreset.allCases) { Text($0.title).tag($0) }
             }
             .pickerStyle(.segmented)
-            HStack {
-                Text("Resize long edge to")
-                TextField("Off", value: $settings.compressionResizeLongEdge, format: .number)
-                    .labelsHidden()
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 80)
-                Text("px (0 = keep size)").foregroundStyle(.secondary)
+            LabeledContent("Resize long edge") {
+                HStack(spacing: 6) {
+                    TextField("Off", value: $settings.compressionResizeLongEdge, format: .number)
+                        .labelsHidden()
+                        .textFieldStyle(.roundedBorder)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 72)
+                    Text("px").foregroundStyle(.secondary)
+                }
             }
         } header: {
             Text("Compression")
         } footer: {
             Text(settings.compressionPreset == .balanced
-                 ? "Balanced keeps detail while trimming size noticeably."
-                 : "Strong prioritizes the smallest file, with visible quality loss.")
+                 ? "Balanced keeps detail and trims size. 0 px keeps the original size."
+                 : "Strong makes the smallest file and loses visible quality. 0 px keeps the original size.")
         }
         Section {
-            HStack {
-                TextField("Auto-detect (Homebrew, MacPorts, /usr/local/bin)", text: $settings.ffmpegPath)
-                    .textFieldStyle(.roundedBorder)
-                Button("Choose…") { chooseFFmpeg() }
+            LabeledContent("Location") {
+                HStack(spacing: 6) {
+                    TextField("Found automatically", text: $settings.ffmpegPath)
+                        .labelsHidden()
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 240)
+                    Button("Choose…") { chooseFFmpeg() }
+                }
             }
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Image(systemName: ffmpegHealthSymbol)
-                    .foregroundStyle(ffmpegHealthColor)
-                Text(ffmpegHealthText)
-                    .font(.caption)
-                    .textSelection(.enabled)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Circle().fill(ffmpegHealthColor).frame(width: 8, height: 8)
+                Text(ffmpegHealthText).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+            }
+            if case .missing = ffmpegHealth {
+                LabeledContent("Install in Terminal") {
+                    Text("brew install ffmpeg").font(.system(.callout, design: .monospaced)).textSelection(.enabled)
+                }
             }
         } header: {
-            Text("FFmpeg (optional)")
+            Text("FFmpeg")
         } footer: {
-            Text("Open Tangerine uses Apple frameworks for most work. FFmpeg fills the gaps: MP3, FLAC, OGG, Opus, WMA, MKV, WebM, AVI, WMV, GIF and AVIF/WebP encoding on older systems.")
-        }
-    }
-
-    @ViewBuilder private var about: some View {
-        Section {
-            VStack(spacing: 16) {
-                Image(nsImage: BrandArtwork.image(size: 100))
-                    .resizable().frame(width: 84, height: 84)
-                    .shadow(color: Theme.accent.opacity(0.18), radius: 12, y: 6)
-                    .accessibilityLabel("Open Tangerine icon")
-                VStack(spacing: 6) {
-                    Text("Open Tangerine").font(.system(size: 25, weight: .bold, design: .rounded))
-                    Text("A little less friction. A little more flow.")
-                        .font(.system(size: 13)).foregroundStyle(.secondary)
-                }
-                Text("VERSION \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development")  ·  DEVELOPER TRIAL")
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                    .tracking(1.1).foregroundStyle(.secondary)
-                Divider().padding(.horizontal, 30)
-                VStack(spacing: 7) {
-                    Text("Sintax Error Private Limited").font(.system(size: 13, weight: .semibold))
-                    Text("Free to use. Open to make better.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                HStack(spacing: 5) {
-                    Text("Made with")
-                    Image(systemName: "heart.fill").foregroundStyle(Theme.accent).accessibilityLabel("love")
-                    Text("by")
-                    Link("Hemaangg", destination: URL(string: "https://www.instagram.com/hemaangg/")!)
-                        .fontWeight(.semibold)
-                        .help("Visit Hemaangg on Instagram")
-                }
-                .font(.system(size: 13))
-                .padding(.top, 2)
-                Text("GPL-3.0-only · Based on Satsuma by plyght (MIT).\nIndependent of Tangerine. Some features remain experimental.")
-                    .font(.system(size: 10)).foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center).lineSpacing(3)
-            }
-            .frame(maxWidth: .infinity).padding(.vertical, 20)
-        }
-    }
-
-    private var ffmpegHealthSymbol: String {
-        switch ffmpegHealth {
-        case .ready: return "checkmark.circle.fill"
-        case .broken: return "xmark.octagon.fill"
-        case .missing: return "exclamationmark.triangle.fill"
+            Text("Most conversions use Apple’s own frameworks. FFmpeg adds MP3, FLAC, OGG, Opus, WMA, MKV, WebM, AVI, WMV and GIF. Searched in /opt/homebrew/bin and /usr/local/bin.")
         }
     }
 
@@ -350,9 +277,9 @@ struct SettingsView: View {
 
     private var ffmpegHealthText: String {
         switch ffmpegHealth {
-        case let .ready(path, version): return "Using ffmpeg \(version) at \(path)"
-        case let .broken(path, reason): return "ffmpeg at \(path) cannot run: \(reason)"
-        case .missing: return "FFmpeg not found. Install with `brew install ffmpeg` or pick the binary."
+        case let .ready(path, version): return "FFmpeg \(version) at \(path)"
+        case let .broken(path, reason): return "FFmpeg at \(path) does not start: \(reason)"
+        case .missing: return "FFmpeg is not installed. Audio and video conversions that need it stay unavailable."
         }
     }
 
@@ -367,79 +294,65 @@ struct SettingsView: View {
             settings.ffmpegPath = url.path
         }
     }
-}
 
-struct SettingsTabBar: View {
-    @ObservedObject var model: SettingsTabModel
-    @Namespace private var namespace
+    // MARK: Appearance
 
-    var body: some View {
-        GlassGroup {
-            HStack(spacing: 2) {
-                ForEach(SettingsTab.allCases) { tab in
-                    Button {
-                        model.tab = tab
-                    } label: {
-                        Label(tab.title, systemImage: tab.symbol)
-                            .labelStyle(.titleOnly)
-                            .font(.system(size: 13, weight: model.tab == tab ? .semibold : .regular))
-                            .foregroundStyle(model.tab == tab ? Color.white : Color.primary)
-                            .lineLimit(1)
-                            .fixedSize()
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 6)
-                            .contentShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .background {
-                        if model.tab == tab {
-                            Color.clear
-                                .glassSurface(tint: Theme.accent, interactive: true, in: Capsule())
-                                .matchedGeometryEffect(id: "selection", in: namespace)
-                        }
-                    }
+    @ViewBuilder private var appearance: some View {
+        Section("Theme") {
+            Picker("Appearance", selection: $settings.appearanceMode) {
+                ForEach(AppearanceMode.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented)
+        }
+        Section {
+            Picker("Style", selection: $settings.progressStyle) {
+                ForEach(ProgressStyle.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            if settings.progressStyle == .pill {
+                Picker("Notch surface", selection: $settings.notchSurface) {
+                    ForEach(NotchSurface.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+            }
+        } header: {
+            Text("Progress")
+        } footer: {
+            Text(settings.progressStyle == .card
+                 ? "A small floating card in the top right corner. It closes when the work is done."
+                 : "A panel below the notch. Finished results slide back after two seconds.")
+        }
+    }
+
+    // MARK: About
+
+    @ViewBuilder private var about: some View {
+        Section {
+            HStack(spacing: 16) {
+                Image(nsImage: BrandArtwork.image(size: 128))
+                    .resizable().frame(width: 64, height: 64)
+                    .accessibilityLabel("Open Tangerine icon")
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Open Tangerine").font(.system(size: 20, weight: .medium))
+                    Text("Version \(version) · Developer build").foregroundStyle(.secondary)
+                    Text("Converts files on this Mac. No account, no network access.")
+                        .font(.callout).foregroundStyle(.secondary)
                 }
             }
-            .padding(3)
-            .glassSurface(in: Capsule())
+            .padding(.vertical, 8)
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: model.tab)
+        Section("Credits") {
+            LabeledContent("Original app", value: "Sintax Error Private Limited")
+            LabeledContent("Created by") {
+                Link("Hemaangg", destination: URL(string: "https://www.instagram.com/hemaangg/")!)
+            }
+            LabeledContent("Based on", value: "Satsuma by plyght (MIT)")
+        }
+        Section {
+            Text("GPL-3.0-only. Independent of Tangerine. Some features are experimental, so check important results.")
+                .font(.callout).foregroundStyle(.secondary)
+        }
     }
 }
 
-final class SettingsWindow: NSWindow {
-    var toolbarDelegate: SettingsToolbarDelegate?
-}
-
-@MainActor
-final class SettingsToolbarDelegate: NSObject, NSToolbarDelegate {
-    static let tabsItem = NSToolbarItem.Identifier("opentangerine.settings.tabs")
-    let model: SettingsTabModel
-
-    init(model: SettingsTabModel) {
-        self.model = model
-    }
-
-    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, Self.tabsItem, .flexibleSpace]
-    }
-
-    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        toolbarDefaultItemIdentifiers(toolbar)
-    }
-
-    func toolbar(
-        _ toolbar: NSToolbar,
-        itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
-        willBeInsertedIntoToolbar flag: Bool
-    ) -> NSToolbarItem? {
-        guard itemIdentifier == Self.tabsItem else { return nil }
-        let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-        let hosting = NSHostingView(rootView: SettingsTabBar(model: model))
-        hosting.sizingOptions = [.intrinsicContentSize]
-        item.view = hosting
-        item.isBordered = false
-        return item
-    }
-}
-
+final class SettingsWindow: NSWindow {}

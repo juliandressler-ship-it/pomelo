@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let dragMonitor = DragMonitor()
     private let radial = RadialController()
     private var settingsWindow: NSWindow?
+    private var welcomeWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         DiagnosticLog.start()
@@ -20,10 +21,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         dragMonitor.delegate = radial
         dragMonitor.start()
-        // Login-item launches stay quietly in the menu bar; show onboarding once.
-        if !UserDefaults.standard.bool(forKey: "hasOpenedSettings") {
-            UserDefaults.standard.set(true, forKey: "hasOpenedSettings")
-            openSettings()
+        // Beim ersten Start einmal das Willkommensfenster zeigen; später bleibt die App still in der Menüleiste.
+        if !UserDefaults.standard.bool(forKey: "hasSeenWelcome") {
+            UserDefaults.standard.set(true, forKey: "hasSeenWelcome")
+            showWelcome()
         }
     }
 
@@ -46,12 +47,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(withTitle: "File Actions…", action: #selector(fileActions), keyEquivalent: "a").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
+        menu.addItem(withTitle: "How It Works…", action: #selector(showWelcome), keyEquivalent: "").target = self
         menu.addItem(withTitle: "About Open Tangerine", action: #selector(about), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Show Logs", action: #selector(showLogs), keyEquivalent: "").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Open Tangerine", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let symbols = ["Convert Files…": "arrow.triangle.2.circlepath", "Open Tool for Files…": "wrench.and.screwdriver",
-                       "File Actions…": "doc.on.doc", "Settings…": "gearshape", "About Open Tangerine": "info.circle",
+                       "File Actions…": "doc.on.doc", "Settings…": "gearshape", "How It Works…": "questionmark.circle", "About Open Tangerine": "info.circle",
                        "Show Logs": "doc.text.magnifyingglass",
                        "Quit Open Tangerine": "power"]
         for entry in menu.items {
@@ -88,16 +90,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @MainActor
-    static func makeSettingsWindow() -> NSWindow {
+    static func makeSettingsWindow(tab: SettingsTab = .general) -> NSWindow {
         let model = SettingsTabModel()
+        model.tab = tab
         let view = SettingsView(model: model).environmentObject(AppSettings.shared)
         let controller = NSHostingController(rootView: view)
         controller.sizingOptions = []
         let window = SettingsWindow(contentViewController: controller)
-        window.title = "Open Tangerine Settings"
-        window.styleMask = [.titled, .closable, .miniaturizable]
-        window.titleVisibility = .hidden
-        window.isMovableByWindowBackground = true
+        window.title = "Open Tangerine"
+        window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
+        window.toolbarStyle = .unified
         window.isReleasedWhenClosed = false
         window.setContentSize(NSSize(width: SettingsView.width, height: SettingsView.height))
         window.center()
@@ -111,6 +113,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    @MainActor
+    @objc private func showWelcome() {
+        if welcomeWindow == nil {
+            welcomeWindow = Self.makeWelcomeWindow(openSettings: { [weak self] in self?.openSettings() })
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        welcomeWindow?.center()
+        welcomeWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    @MainActor
+    static func makeWelcomeWindow(openSettings: @escaping () -> Void) -> NSWindow {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: WelcomeView.width, height: WelcomeView.height),
+                              styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.isMovableByWindowBackground = true
+        window.isReleasedWhenClosed = false
+        let close: () -> Void = { [weak window] in window?.performClose(nil) }
+        window.contentViewController = NSHostingController(rootView: WelcomeView(
+            done: close,
+            openSettings: { close(); openSettings() }
+        ).environmentObject(AppSettings.shared))
+        window.setContentSize(NSSize(width: WelcomeView.width, height: WelcomeView.height))
+        return window
     }
 
     @objc private func showLogs() {

@@ -10,12 +10,6 @@ struct OpenTangerineApp: App {
         Settings {
             SettingsView(model: settingsTabs)
                 .environmentObject(AppSettings.shared)
-                .toolbar {
-                    ToolbarItem(placement: .principal) {
-                        SettingsTabBar(model: settingsTabs)
-                    }
-                }
         }
     }
 }
-

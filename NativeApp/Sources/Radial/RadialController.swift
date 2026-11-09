@@ -24,6 +24,8 @@ final class RadialPanel: NSPanel {
 
 final class RadialController: DragMonitorDelegate {
     private var panel: RadialPanel?
+    /// Nur für den Screenshot-Modus: Fenster des Rads.
+    var panelWindowNumber: Int? { panel?.windowNumber }
     private var urls: [URL] = []
     private var formats: [FileFormat] = []
     private var advanced = false
@@ -37,14 +39,14 @@ final class RadialController: DragMonitorDelegate {
     func dragMonitor(_ monitor: DragMonitor, didBeginModifiedDrag urls: [URL], at point: NSPoint, advanced: Bool) {
         dragMonitor = monitor
         pickerMode = false
-        actions = NSEvent.modifierFlags.contains(.control)
+        actions = NSEvent.modifierFlags.contains(AppSettings.shared.key(for: .actions).flag)
         present(urls: urls, at: point, advanced: advanced)
     }
 
     func dragMonitor(_ monitor: DragMonitor, didChangeModifiers shift: Bool, option: Bool, at point: NSPoint) {
         guard !pickerMode else { return }
         if !shift { return }
-        let newActions = NSEvent.modifierFlags.contains(.control)
+        let newActions = NSEvent.modifierFlags.contains(AppSettings.shared.key(for: .actions).flag)
         if actions != newActions { actions = newActions; reloadItems() }
         if !visible {
             present(urls: urls, at: point, advanced: option)
@@ -97,6 +99,7 @@ final class RadialController: DragMonitorDelegate {
         let view = panel.radialView
         view.interactive = pickerMode
         view.advancedMode = advanced
+        view.modeKey = modeKey
         let clamped = clampedCenter(point, in: screen.frame, radius: view.discRadius + 48)
         view.center = NSPoint(x: clamped.x - screen.frame.minX, y: clamped.y - screen.frame.minY)
         view.onSelect = { [weak self] item in self?.select(item) }
@@ -144,9 +147,17 @@ final class RadialController: DragMonitorDelegate {
         dragMonitor?.markHandled()
     }
 
+    /// Taste, die das aktuelle Rad geöffnet hat; im Menü-Modus keine.
+    private var modeKey: DragKey? {
+        guard !pickerMode else { return nil }
+        let settings = AppSettings.shared
+        return settings.key(for: actions ? .actions : advanced ? .tools : .convert)
+    }
+
     private func reloadItems() {
         guard let view = panel?.radialView else { return }
         view.advancedMode = advanced
+        view.modeKey = modeKey
         let count = urls.count
         if count == 0 {
             view.items = []

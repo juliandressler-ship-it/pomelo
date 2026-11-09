@@ -135,32 +135,58 @@ struct WedgeShape: Shape {
     }
 }
 
+/// Ring hinter den Segmenten: trägt das Liquid-Glass-Material.
+struct RingShape: Shape {
+    var inner: CGFloat
+    var outer: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let c = CGPoint(x: rect.midX, y: rect.midY)
+        var path = Path()
+        path.addEllipse(in: CGRect(x: c.x - outer, y: c.y - outer, width: outer * 2, height: outer * 2))
+        path.addEllipse(in: CGRect(x: c.x - inner, y: c.y - inner, width: inner * 2, height: inner * 2))
+        return path
+    }
+}
+
+/// Das Rad (Phase 2): helle Segmente mit leichtem Relief auf einem Glasring,
+/// das gewählte Segment mandarinenorange und leicht herausgehoben,
+/// in der Mitte eine Pille mit dem Ziel, darunter eine Zeile mit der Aktion.
 struct RadialWheelView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var appeared = false
     var presentationID: UUID = UUID()
     var items: [RadialItem]
     var highlighted: Int?
     var title: String
+    var caption: String
+    var modeKey: DragKey?
     var emptyMessage: String
     var emptyDetail: String
     var geometry: RadialGeometry
 
+    static let captionHeight: CGFloat = 52
+
     var body: some View {
-        GlassGroup {
+        VStack(spacing: 0) {
             ZStack {
                 if items.isEmpty {
                     empty
                 } else {
+                    base
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                         wedge(item, index: index)
                     }
                     pill
                 }
             }
+            .frame(width: geometry.outerRadius * 2 + 40, height: geometry.outerRadius * 2 + 40)
+            if !items.isEmpty { captionLine }
         }
-        .frame(width: geometry.outerRadius * 2 + 40, height: geometry.outerRadius * 2 + 40)
-        .scaleEffect(appeared || reduceMotion ? 1 : 0.84)
+        .frame(height: geometry.outerRadius * 2 + 40 + Self.captionHeight, alignment: .top)
+        .scaleEffect(appeared || reduceMotion ? 1 : 0.86, anchor: UnitPoint(x: 0.5, y: 0.43))
+        .opacity(appeared ? 1 : 0)
         .onAppear { animateIn() }
         .onChange(of: presentationID) { animateIn() }
     }
@@ -168,10 +194,22 @@ struct RadialWheelView: View {
     private func animateIn() {
         appeared = false
         DispatchQueue.main.async {
-            withAnimation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.78)) {
+            withAnimation(reduceMotion ? .easeOut(duration: 0.12) : Theme.wheelSpring) {
                 appeared = true
             }
         }
+    }
+
+    /// Glasring als Untergrund, damit das Rad auf jedem Hintergrund lesbar bleibt.
+    private var base: some View {
+        let ring = RingShape(inner: geometry.innerRadius - 8, outer: geometry.outerRadius + 8)
+        return GlassGroup {
+            Color.clear
+                .frame(width: geometry.outerRadius * 2 + 40, height: geometry.outerRadius * 2 + 40)
+                .glassSurface(in: ring)
+        }
+        .overlay(ring.stroke(Color.primary.opacity(0.08), lineWidth: 1))
+        .shadow(color: .black.opacity(0.14), radius: 18, y: 8)
     }
 
     private func wedge(_ item: RadialItem, index: Int) -> some View {
@@ -180,51 +218,90 @@ struct RadialWheelView: View {
         return GeometryReader { proxy in
             let rect = CGRect(origin: .zero, size: proxy.size)
             let mid = geometry.midpoint(for: index, in: rect)
+            let lift: CGFloat = selected && !reduceMotion ? 6 : 0
             ZStack {
+                if selected {
+                    shape.fill(Theme.accentStrong.shadow(.inner(color: .white.opacity(0.28), radius: 1, y: 1)))
+                        .shadow(color: .black.opacity(0.22), radius: 8, y: 4)
+                } else {
+                    shape.fill(Theme.segment
+                        .shadow(.inner(color: .white.opacity(0.55), radius: 0.5, y: 1))
+                        .shadow(.inner(color: .black.opacity(0.07), radius: 3, y: -1)))
+                    shape.stroke(Color.primary.opacity(0.06), lineWidth: 1)
+                }
                 label(item, selected: selected)
                     .frame(width: geometry.labelWidth)
                     .position(mid)
             }
             .frame(width: rect.width, height: rect.height)
-            .glassSurface(tint: selected ? Theme.accent : nil, in: shape)
-            .scaleEffect(selected && !reduceMotion ? 1.025 : 1)
-            .offset(x: selected && !reduceMotion ? (mid.x - rect.midX) / geometry.labelRadius * 4 : 0,
-                    y: selected && !reduceMotion ? (mid.y - rect.midY) / geometry.labelRadius * 4 : 0)
+            .scaleEffect(selected && !reduceMotion ? 1.03 : 1)
+            .offset(x: (mid.x - rect.midX) / geometry.labelRadius * lift,
+                    y: (mid.y - rect.midY) / geometry.labelRadius * lift)
         }
-        .animation(reduceMotion ? nil : .spring(response: 0.26, dampingFraction: 0.8), value: highlighted)
+        .zIndex(selected ? 1 : 0)
+        .animation(reduceMotion ? nil : Theme.wheelSpring, value: highlighted)
     }
 
     private func label(_ item: RadialItem, selected: Bool) -> some View {
         let dense = items.count > 8
-        return VStack(spacing: dense ? 3 : 5) {
-            Image(systemName: item.symbol)
-                .font(.system(size: dense ? 16 : 20, weight: .medium))
-                .symbolRenderingMode(.monochrome)
+        let isFormat: Bool = { if case .convert = item.action { return true }; return false }()
+        return VStack(spacing: dense ? 3 : 4) {
+            if !isFormat || items.count <= 4 {
+                Image(systemName: item.symbol)
+                    .font(.system(size: dense ? 15 : 17, weight: .regular))
+                    .symbolRenderingMode(.monochrome)
+            }
             Text(item.label)
-                .font(.system(size: dense ? 10 : 11.5, weight: .bold, design: .rounded))
-                .kerning(dense ? 0.3 : 0.6)
+                .font(.system(size: dense ? 10.5 : 12, weight: .semibold, design: .rounded))
                 .lineLimit(1)
-                .minimumScaleFactor(0.6)
+                .minimumScaleFactor(0.65)
                 .allowsTightening(true)
         }
-        .foregroundStyle(selected ? Color.white : Color.primary)
+        .foregroundStyle(selected ? Color.white : Color.primary.opacity(0.82))
         .contentTransition(.identity)
     }
 
     private var pill: some View {
         Text(title)
-            .font(.system(size: 13, weight: .semibold, design: .rounded))
+            .font(.system(size: 14, weight: .semibold, design: .rounded))
+            .foregroundStyle(highlighted == nil ? Color.secondary : Color.primary)
             .lineLimit(1)
             .minimumScaleFactor(0.7)
             .allowsTightening(true)
             .padding(.horizontal, 12)
             .frame(height: 34)
-            .frame(maxWidth: geometry.innerRadius * 2 - 8)
-            .glassSurface(in: Capsule())
+            .frame(maxWidth: geometry.innerRadius * 2 - 12)
+            .background(Theme.pill, in: Capsule())
+            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08), lineWidth: 1))
+            .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+            .id(title)
+            .transition(.opacity)
+            .animation(Theme.ease, value: title)
+    }
+
+    /// Zeile unter dem Rad: Taste und Aktion, z.B. "⇧  Convert to PNG".
+    private var captionLine: some View {
+        HStack(spacing: 8) {
+            if let modeKey { Keycap(key: modeKey, size: .small) }
+            Text(caption)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(highlighted == nil ? Color.secondary : Color.primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .contentTransition(.opacity)
+        }
+        .padding(.leading, modeKey == nil ? 14 : 8)
+        .padding(.trailing, 14)
+        .frame(height: 32)
+        .frame(maxWidth: geometry.outerRadius * 2)
+        .glassSurface(in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08), lineWidth: 1))
+        .padding(.top, 8)
+        .animation(Theme.ease, value: caption)
     }
 
     private var empty: some View {
-        VStack(spacing: 3) {
+        VStack(spacing: 4) {
             Text(emptyMessage)
                 .font(.system(size: 14, weight: .semibold))
             if !emptyDetail.isEmpty {
@@ -235,10 +312,10 @@ struct RadialWheelView: View {
                     .truncationMode(.middle)
             }
         }
-        .padding(.horizontal, 22)
+        .padding(.horizontal, 20)
         .padding(.vertical, 12)
         .frame(maxWidth: geometry.outerRadius * 2)
-        .glassSurface(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .glassSurface(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
@@ -257,6 +334,8 @@ final class RadialView: NSView {
     var onDragSessionEnded: (() -> Void)?
     var interactive = false
     var advancedMode = false { didSet { refresh() } }
+    /// Taste, mit der das Rad geöffnet wurde (nil, wenn über das Menü geöffnet).
+    var modeKey: DragKey? { didSet { refresh() } }
 
     private(set) var highlighted: Int? {
         didSet {
@@ -264,9 +343,7 @@ final class RadialView: NSView {
             let label = highlighted.flatMap { items.indices.contains($0) ? items[$0].label : nil }
             let direction: CGFloat = highlighted.map { cos(CGFloat($0) * 2 * .pi / CGFloat(max(items.count, 1)) - .pi / 2) } ?? 0
             Task { @MainActor in JobRunner.shared.watchWheel(label: label, direction: direction) }
-            if highlighted != nil {
-                NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .drawCompleted)
-            }
+            if highlighted != nil { Feedback.hover() }
             refresh()
         }
     }
@@ -280,7 +357,7 @@ final class RadialView: NSView {
     private var geometry: RadialGeometry { RadialGeometry(count: items.count) }
 
     override init(frame frameRect: NSRect) {
-        host = PassthroughHostingView(rootView: RadialWheelView(items: [], highlighted: nil, title: "", emptyMessage: "", emptyDetail: "", geometry: RadialGeometry(count: 0)))
+        host = PassthroughHostingView(rootView: RadialWheelView(items: [], highlighted: nil, title: "", caption: "", modeKey: nil, emptyMessage: "", emptyDetail: "", geometry: RadialGeometry(count: 0)))
         super.init(frame: frameRect)
         let promiseTypes = NSFilePromiseReceiver.readableDraggedTypes.map { NSPasteboard.PasteboardType($0) }
         registerForDraggedTypes([.fileURL, NSPasteboard.PasteboardType("com.apple.finder.node")] + promiseTypes)
@@ -296,7 +373,9 @@ final class RadialView: NSView {
 
     override func layout() {
         super.layout()
-        host.frame = NSRect(x: center.x - discRadius, y: center.y - discRadius, width: discRadius * 2, height: discRadius * 2)
+        // Das Rad sitzt oben im Host, die Aktionszeile darunter; die Radmitte bleibt am Mauszeiger.
+        let extra = RadialWheelView.captionHeight
+        host.frame = NSRect(x: center.x - discRadius, y: center.y - discRadius - extra, width: discRadius * 2, height: discRadius * 2 + extra)
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
@@ -313,16 +392,21 @@ final class RadialView: NSView {
 
     private func refresh() {
         let title: String
+        let caption: String
         if let highlighted, highlighted < items.count {
             title = items[highlighted].label
+            caption = items[highlighted].detail
         } else {
-            title = items.count == 1 ? items[0].label : (advancedMode ? "TOOLS" : "CONVERT")
+            title = items.count == 1 ? items[0].label : (advancedMode ? "Tools" : "Convert")
+            caption = subtitle
         }
         host.rootView = RadialWheelView(
             presentationID: presentationID,
             items: items,
             highlighted: highlighted,
             title: title,
+            caption: caption,
+            modeKey: modeKey,
             emptyMessage: emptyMessage,
             emptyDetail: subtitle,
             geometry: geometry
@@ -375,6 +459,7 @@ final class RadialView: NSView {
             return false
         }
         let item = items[highlighted]
+        Feedback.drop()
         DispatchQueue.main.async { [weak self] in self?.onSelect?(item) }
         return true
     }
@@ -388,6 +473,7 @@ final class RadialView: NSView {
         guard interactive else { return }
         updateHighlight(forWindowPoint: event.locationInWindow)
         if let highlighted, highlighted < items.count {
+            Feedback.drop()
             onSelect?(items[highlighted])
         } else {
             onCancel?()
@@ -400,7 +486,7 @@ final class RadialView: NSView {
         case 53:
             onCancel?()
         case 36, 76:
-            if let highlighted, highlighted < items.count { onSelect?(items[highlighted]) }
+            if let highlighted, highlighted < items.count { Feedback.drop(); onSelect?(items[highlighted]) }
         case 123, 126:
             step(-1)
         case 124, 125:

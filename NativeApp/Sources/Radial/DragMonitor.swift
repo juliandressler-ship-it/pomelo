@@ -99,9 +99,18 @@ final class DragMonitor {
 
     private var buttonPressed: Bool { NSEvent.pressedMouseButtons & 1 == 1 }
 
+    /// shift = irgendeine Radtaste gedrückt, option = Werkzeugrad gewünscht.
     private var currentModifiers: (shift: Bool, option: Bool) {
-        let flags = NSEvent.modifierFlags
-        return (flags.contains(.shift) || flags.contains(.command) || flags.contains(.control), flags.contains(.command) || flags.contains(.option))
+        Self.wheelState(flags: NSEvent.modifierFlags, settings: AppSettings.shared)
+    }
+
+    static func wheelState(flags: NSEvent.ModifierFlags, settings: AppSettings) -> (shift: Bool, option: Bool) {
+        let keys = [settings.key(for: .convert), settings.key(for: .tools), settings.key(for: .actions)]
+        let any = keys.contains { flags.contains($0.flag) }
+        let tools = settings.key(for: .tools)
+        // Option + Umrechnungstaste bleibt als zweiter Weg zum Werkzeugrad (Command verschiebt im Finder).
+        let alternate = tools == .command && flags.contains(.option) && flags.contains(settings.key(for: .convert).flag)
+        return (any, flags.contains(tools.flag) || alternate)
     }
 
     private func beginPressIfNeeded() {

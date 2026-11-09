@@ -10,9 +10,8 @@ import PDFKit
         defer { try? fm.removeItem(at: root) }
         func url(_ name: String) -> URL { root.appendingPathComponent(name) }
         func convert(_ source: URL, _ from: FileFormat, _ to: FileFormat, _ name: String) async throws -> URL {
-            let output = url(name)
-            try await Engines.convert(ConversionRequest(source: source, sourceFormat: from, target: to, destination: output, progress: { _ in }))
-            return output
+            // Die Engine liefert den echten Pfad (bei mehrseitigen PDFs einen Ordner "… pages")
+            try await Engines.convert(ConversionRequest(source: source, sourceFormat: from, target: to, destination: url(name), progress: { _ in }))
         }
         let text = "Open Tangerine document test\nCafé & <content>\n\nSecond paragraph."
         try text.write(to: url("input.txt"), atomically: true, encoding: .utf8)
@@ -49,6 +48,14 @@ import PDFKit
             print("PASS PDF split \(mode)")
         }
         try PDFOps.assemble(pages: [PDFPageRef(sourceIndex: 1, rotation: 90, sourceURL: merged), PDFPageRef(sourceIndex: 0, rotation: 0, sourceURL: merged)], to: url("reordered.pdf"))
+        // Nachbau: mehrseitige PDF -> Bilder landet in einem klar benannten Ordner, nicht in "merged.jpg"
+        let pagesFolder = try await Engines.convert(ConversionRequest(source: merged, sourceFormat: .pdf, target: .jpg, destination: url("merged.jpg"), progress: { _ in }))
+        precondition(pagesFolder.lastPathComponent == "merged JPG pages", "got \(pagesFolder.lastPathComponent)")
+        precondition(!fm.fileExists(atPath: url("merged.jpg").path))
+        precondition(try! fm.contentsOfDirectory(atPath: pagesFolder.path).filter { $0.hasSuffix(".jpg") }.count == 2)
+        let pagesFolder2 = try await Engines.convert(ConversionRequest(source: merged, sourceFormat: .pdf, target: .jpg, destination: url("merged.jpg"), progress: { _ in }))
+        precondition(pagesFolder2.lastPathComponent == "merged JPG pages 2")
+        print("PASS PDF multi-page -> JPG folder name and collision")
         let reordered = try PDFOps.document(url("reordered.pdf"))
         precondition(reordered.page(at: 0)!.rotation == 90 && reordered.page(at: 0)!.string!.contains("Second page"))
         for strong in [false, true] {

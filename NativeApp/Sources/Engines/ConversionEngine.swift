@@ -27,7 +27,10 @@ enum Engines {
         all.first { $0.supports(from: from, to: to) }
     }
 
-    static func convert(_ request: ConversionRequest) async throws {
+    /// Liefert die tatsächliche Ausgabe. Bei mehrseitigen PDFs ist das ein Ordner
+    /// ("dokument JPG pages"), damit kein Ordner wie eine Bilddatei heißt.
+    @discardableResult
+    static func convert(_ request: ConversionRequest) async throws -> URL {
         guard let engine = engine(from: request.sourceFormat, to: request.target) else {
             DiagnosticLog.log("no engine for \(request.sourceFormat.rawValue) -> \(request.target.rawValue)")
             throw OpenTangerineError.unsupportedConversion(request.sourceFormat, request.target)
@@ -49,7 +52,14 @@ enum Engines {
             var isDirectory: ObjCBool = false
             if FileManager.default.fileExists(atPath: temp.path, isDirectory: &isDirectory) {
                 // moveItem refuses an existing destination; never delete another file.
-                try FileManager.default.moveItem(at: temp, to: request.destination)
+                var final = request.destination
+                if isDirectory.boolValue {
+                    let base = request.destination.deletingPathExtension().lastPathComponent
+                    final = ConversionMatrix.uniqueDirectory(directory: request.destination.deletingLastPathComponent(),
+                                                             name: "\(base) \(request.target.displayName) pages")
+                }
+                try FileManager.default.moveItem(at: temp, to: final)
+                return final
             } else {
                 throw OpenTangerineError.encodeFailed(request.destination.lastPathComponent)
             }

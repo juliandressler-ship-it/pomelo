@@ -209,7 +209,7 @@ struct AudioChannelsToolView: View {
             }
             .padding(12)
         } sidebar: {
-            if !FFmpeg.isAvailable { Text("Channel conversion requires FFmpeg. Set its path in Settings.").font(.caption).foregroundStyle(.secondary) }
+            if !FFmpeg.isAvailable { Text("Channel conversion needs FFmpeg. Install it with `brew install ffmpeg` or set its path in Settings.").font(.caption).foregroundStyle(.secondary) }
             SidebarSection(title: "Channels") {
                 Picker("", selection: $mode) {
                     ForEach(AudioOps.ChannelMode.allCases) { Text($0.title).tag($0) }
@@ -321,7 +321,7 @@ struct RedactAudioToolView: View {
                 LabeledSlider(title: "Frequency", value: $frequency, range: 300...2000) { String(format: "%.0f Hz", $0) }
             }
             SidebarSection(title: "Compare") {
-                Text(FFmpeg.isAvailable ? "Play a bleep row to hear the original section. The saved copy replaces those sections with the tone." : "Bleep requires FFmpeg. Set its path in Settings.").font(.caption2).foregroundStyle(.secondary)
+                Text(FFmpeg.isAvailable ? "Play a bleep row to hear the original section. The saved copy replaces those sections with the tone." : "Bleep needs FFmpeg. Install it with `brew install ffmpeg` or set its path in Settings.").font(.caption2).foregroundStyle(.secondary)
             }
         }
         .onAppear { media.loadWaveform() }

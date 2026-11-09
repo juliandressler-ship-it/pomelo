@@ -2,7 +2,6 @@ import AppKit
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
-    private var updateMenuItem: NSMenuItem?
     private var statusItem: NSStatusItem?
     private let dragMonitor = DragMonitor()
     private let radial = RadialController()
@@ -14,18 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         AppSettings.shared.applyAppearance()
         NSApp.applicationIconImage = BrandArtwork.image(size: 256)
         installStatusItem()
-        UpdateChecker.shared.onAvailable = { [weak self] version in
-            guard let version else {
-                self?.updateMenuItem?.title = "Check for Updates on Website…"
-                self?.statusItem?.button?.toolTip = "Open Tangerine: hold Shift while dragging a file"
-                self?.statusItem?.button?.image = BrandArtwork.image(size: 24, template: true)
-                return
-            }
-            self?.updateMenuItem?.title = "Download update \(version) from website…"
-            self?.statusItem?.button?.toolTip = "Open Tangerine — update \(version) available"
-            self?.statusItem?.button?.image = NSImage(systemSymbolName: "arrow.down.circle.fill", accessibilityDescription: "Update available")
-        }
-        UpdateChecker.shared.start()
+        // Nachbau: keine Update-Prüfung, die App nimmt keinen Kontakt zum Netz auf.
         if ScreenshotDriver.isEnabled {
             ScreenshotDriver.run(radial: radial)
             return
@@ -59,31 +47,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
         menu.addItem(withTitle: "About Open Tangerine", action: #selector(about), keyEquivalent: "").target = self
-        let update = menu.addItem(withTitle: "Check for Updates on Website…", action: #selector(checkForUpdates), keyEquivalent: "")
-        update.target = self
-        update.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Check for updates")
-        updateMenuItem = update
         menu.addItem(withTitle: "Show Logs", action: #selector(showLogs), keyEquivalent: "").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Open Tangerine", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let symbols = ["Convert Files…": "arrow.triangle.2.circlepath", "Open Tool for Files…": "wrench.and.screwdriver",
                        "File Actions…": "doc.on.doc", "Settings…": "gearshape", "About Open Tangerine": "info.circle",
-                       "Check for Updates on Website…": "arrow.clockwise", "Show Logs": "doc.text.magnifyingglass",
+                       "Show Logs": "doc.text.magnifyingglass",
                        "Quit Open Tangerine": "power"]
         for entry in menu.items {
             if let symbol = symbols[entry.title] {
                 entry.image = NSImage(systemSymbolName: symbol, accessibilityDescription: entry.title)
             }
         }
-        menu.delegate = self
         item.menu = menu
         statusItem = item
     }
-
-    @MainActor
-    func menuWillOpen(_ menu: NSMenu) { Task { await UpdateChecker.shared.check(interactive: false) } }
-
-    @objc private func checkForUpdates() { Task { await UpdateChecker.shared.check(interactive: true) } }
 
     @objc private func convertFiles() {
         pickFiles { [weak self] urls in self?.radial.presentPicker(for: urls, advanced: false) }

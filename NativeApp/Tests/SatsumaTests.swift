@@ -42,8 +42,9 @@ struct OpenTangerineTests {
         runner.test("conversion matrix includes checked archive routes") {
             // 176 bisherige Routen + 9 Archivrouten (Phase 3) + 12 Audiospur-Routen
             // + 40 für FLV/MTS/MPG/3GP + 8 für CAF (Phase 5, nur als Quelle)
-            // + 48 Dokumentrouten DOCX/RTF/RTFD/HTML/TXT/Markdown/EPUB (Phase 6)
-            try expectEqual(ConversionMatrix.totalConversions, 293)
+            // + 48 Dokumentrouten DOCX/RTF/RTFD/HTML/TXT/Markdown/EPUB (Phase 6) + 6 Tabellenrouten
+            try expectEqual(ConversionMatrix.totalConversions, 299)
+            try expectEqual(ConversionMatrix.targets(for: .xlsx), [.csv, .tsv])
             try expectEqual(ConversionMatrix.targets(for: .zip).count, 2)
         }
 

@@ -8,6 +8,7 @@ enum FormatCategory: String, CaseIterable {
     case document
     case subtitle
     case archive
+    case table
 
     var symbol: String {
         switch self {
@@ -17,6 +18,7 @@ enum FormatCategory: String, CaseIterable {
         case .document: return "doc.text"
         case .subtitle: return "captions.bubble"
         case .archive: return "archivebox"
+        case .table: return "tablecells"
         }
     }
 
@@ -28,6 +30,7 @@ enum FormatCategory: String, CaseIterable {
         case .document: return "Document"
         case .subtitle: return "Subtitle"
         case .archive: return "Archive"
+        case .table: return "Table"
         }
     }
 }
@@ -42,6 +45,8 @@ enum FileFormat: String, CaseIterable, Identifiable, Hashable {
     case pdf, docx, txt
     // Phase 6: formatierte Texte und E-Books
     case rtf, rtfd, html, md, epub
+    // Tabellen (L14)
+    case csv, tsv, xlsx
     case srt, vtt
     case zip, tar, gz, rar
 
@@ -55,6 +60,7 @@ enum FileFormat: String, CaseIterable, Identifiable, Hashable {
     static let archives: [FileFormat] = [.zip, .tar, .gz, .rar]
     /// Formatierte Texte, die sich untereinander umwandeln lassen (Phase 6)
     static let richText: [FileFormat] = [.docx, .rtf, .rtfd, .html, .txt, .md, .epub]
+    static let tables: [FileFormat] = [.csv, .tsv, .xlsx]
 
     /// Ordner-Pakete, die der Finder wie eine Datei zeigt
     var isPackage: Bool { self == .rtfd }
@@ -68,6 +74,7 @@ enum FileFormat: String, CaseIterable, Identifiable, Hashable {
         case .pdf, .docx, .txt, .rtf, .rtfd, .html, .md, .epub: return .document
         case .srt, .vtt: return .subtitle
         case .zip, .tar, .gz, .rar: return .archive
+        case .csv, .tsv, .xlsx: return .table
         }
     }
 
@@ -97,6 +104,7 @@ enum FileFormat: String, CaseIterable, Identifiable, Hashable {
         case .txt: return ["txt", "text", "log"]
         case .md: return ["md", "markdown"]
         case .html: return ["html", "htm", "xhtml"]
+        case .tsv: return ["tsv", "tab"]
         case .aiff: return ["aiff", "aif"]
         case .mts: return ["mts", "m2ts"] // ".ts" bewusst nicht: kollidiert mit TypeScript-Dateien
         case .mpg: return ["mpg", "mpeg", "m2v", "vob"]
@@ -143,6 +151,9 @@ enum FileFormat: String, CaseIterable, Identifiable, Hashable {
         case .html: return .html
         case .md: return UTType("net.daringfireball.markdown")
         case .epub: return .epub
+        case .csv: return .commaSeparatedText
+        case .tsv: return .tabSeparatedText
+        case .xlsx: return UTType("org.openxmlformats.spreadsheetml.sheet")
         case .srt: return UTType("com.subrip.srt") ?? .plainText
         case .vtt: return UTType("org.w3.webvtt") ?? .plainText
         case .zip: return .zip

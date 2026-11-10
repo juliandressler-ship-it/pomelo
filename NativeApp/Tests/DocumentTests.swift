@@ -176,6 +176,49 @@ import PDFKit
         precondition(!cleaned.contains("tracker.example") && !cleaned.contains("cdn.example") && !cleaned.contains("<script") && !cleaned.contains("cdn/x.css") && !cleaned.contains("url(https"), "Remote references kept: \(cleaned)")
         precondition(cleaned.contains("href=\"https://example.com/page\"") && cleaned.contains("src=\"bild.png\""), "Links or local images removed: \(cleaned)")
         print("PASS documents: DOCX to RTF/RTFD/HTML/TXT/Markdown/EPUB/PDF keep text and formatting, Markdown and EPUB round trips, PDF pagination, offline HTML")
+        // Nachbau Phase 6: Tabellen CSV / TSV / XLSX
+        let tableRows = [["Name", "PLZ", "Betrag", "Notiz"], ["Müller, Anna", "01067", "3.5", "sagt \"hallo\""], ["Özil", "80331", "-12", "zwei\nZeilen"], ["", "", "", "leer davor"]]
+        let csvSource = url("kunden.csv")
+        try CSV.format(tableRows, delimiter: ",").write(to: csvSource, atomically: true, encoding: .utf8)
+        precondition(try! CSV.parse(String(contentsOf: csvSource, encoding: .utf8), delimiter: ",") == tableRows, "CSV round trip")
+        let csvBytes = try! Data(contentsOf: csvSource)
+        let xlsxOut = try await Engines.convert(ConversionRequest(source: csvSource, sourceFormat: .csv, target: .xlsx, destination: url("kunden.xlsx"), progress: { _ in }))
+        let sheetXML = try await Shell.run("/usr/bin/unzip", ["-p", xlsxOut.path, "xl/worksheets/sheet1.xml"])
+        precondition(XMLParser(data: Data(sheetXML.stdout.utf8)).parse(), "Sheet XML not well-formed")
+        precondition(sheetXML.stdout.contains("<c r=\"C2\"><v>3.5</v></c>") && sheetXML.stdout.contains("<t>01067</t>"), "Numbers vs leading-zero text")
+        let xlsxRows = try await TableEngine.read(xlsxOut, format: .xlsx)
+        precondition(xlsxRows == tableRows, "XLSX round trip: \(xlsxRows)")
+        let csvBack = try await Engines.convert(ConversionRequest(source: xlsxOut, sourceFormat: .xlsx, target: .csv, destination: url("zurueck.csv"), progress: { _ in }))
+        precondition(try! Data(contentsOf: csvBack).starts(with: [0xEF, 0xBB, 0xBF]), "CSV needs UTF-8 BOM for Excel")
+        let csvBackRows = try await TableEngine.read(csvBack, format: .csv)
+        precondition(csvBackRows == tableRows, "XLSX -> CSV: \(csvBackRows)")
+        let tsvOut = try await Engines.convert(ConversionRequest(source: csvSource, sourceFormat: .csv, target: .tsv, destination: url("kunden.tsv"), progress: { _ in }))
+        precondition(try! String(contentsOf: tsvOut, encoding: .utf8).hasPrefix("Name\tPLZ\tBetrag\tNotiz\r\n"), "TSV header")
+        precondition(try! Data(contentsOf: csvSource) == csvBytes, "CSV original changed")
+        // Semikolon-CSV (deutsches Excel) und Windows-1252
+        let semicolon = url("de.csv")
+        var cp1252 = Data("Name;Preis\r\nKäse;".utf8.map { $0 }); cp1252 = Data(String(data: cp1252, encoding: .utf8)!.data(using: .windowsCP1252)!) + Data([0x80]) + Data(" 3,50\r\n".utf8)
+        try cp1252.write(to: semicolon)
+        let deRows = try await TableEngine.read(semicolon, format: .csv)
+        precondition(deRows == [["Name", "Preis"], ["Käse", "€ 3,50"]], "Semicolon/CP1252: \(deRows)")
+        // XLSX wie von Excel: gemeinsame Texte, Datum, Wahrheitswert, Zahl mit Rundungsrauschen, Lücke
+        let fake = url("excel")
+        for dir in ["_rels", "xl/_rels", "xl/worksheets"] { try fm.createDirectory(at: fake.appendingPathComponent(dir), withIntermediateDirectories: true) }
+        let parts: [String: String] = [
+            "[Content_Types].xml": "<?xml version=\"1.0\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"/>",
+            "xl/workbook.xml": "<?xml version=\"1.0\"?><workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"Daten\" sheetId=\"7\" r:id=\"rId3\"/></sheets></workbook>",
+            "xl/_rels/workbook.xml.rels": "<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId3\" Type=\"x\" Target=\"worksheets/daten.xml\"/></Relationships>",
+            "xl/sharedStrings.xml": "<?xml version=\"1.0\"?><sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><si><t>Datum</t></si><si><r><t>Teil </t></r><r><rPr><b/></rPr><t>fett</t></r></si><si><t>Straße &amp; Co</t></si></sst>",
+            "xl/styles.xml": "<?xml version=\"1.0\"?><styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><numFmts><numFmt numFmtId=\"164\" formatCode=\"dd.mm.yyyy\"/></numFmts><cellXfs><xf numFmtId=\"0\"/><xf numFmtId=\"14\"/><xf numFmtId=\"164\"/><xf numFmtId=\"4\"/></cellXfs></styleSheet>",
+            "xl/worksheets/daten.xml": "<?xml version=\"1.0\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData><row r=\"1\"><c r=\"A1\" t=\"s\"><v>0</v></c><c r=\"C1\" t=\"s\"><v>1</v></c></row><row r=\"3\"><c r=\"A3\" s=\"1\"><v>45000</v></c><c r=\"B3\" s=\"2\"><v>45000.5</v></c><c r=\"C3\" t=\"b\"><v>1</v></c><c r=\"D3\" s=\"3\"><v>0.10000000000000001</v></c><c r=\"E3\" t=\"s\"><v>2</v></c><c r=\"F3\" t=\"str\"><f>A3+1</f><v>berechnet</v></c></row></sheetData></worksheet>",
+        ]
+        for (path, content) in parts { try content.write(to: fake.appendingPathComponent(path), atomically: true, encoding: .utf8) }
+        let fakeXLSX = url("excel.xlsx")
+        try await ZipTool.zip(directory: fake, to: fakeXLSX)
+        let excelRows = try await TableEngine.read(fakeXLSX, format: .xlsx)
+        precondition(excelRows == [["Datum", "", "Teil fett"], [], ["2023-03-15", "2023-03-15 12:00:00", "TRUE", "0.1", "Straße & Co", "berechnet"]], "Excel reading: \(excelRows)")
+        do { _ = try await TableEngine.read(url("kunden.csv"), format: .xlsx); fatalError("CSV accepted as XLSX") } catch OpenTangerineError.invalidInput { }
+        print("PASS tables: CSV/TSV/XLSX round trips, quotes and line breaks, leading zeros stay text, semicolon and Windows-1252 CSV, Excel shared strings, dates, booleans")
         let reordered = try PDFOps.document(url("reordered.pdf"))
         precondition(reordered.page(at: 0)!.rotation == 90 && reordered.page(at: 0)!.string!.contains("Second page"))
         for strong in [false, true] {

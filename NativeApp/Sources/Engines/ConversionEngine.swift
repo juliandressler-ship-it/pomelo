@@ -20,6 +20,7 @@ enum Engines {
         VideoEngine(),
         DocumentEngine(),
         RichTextEngine(),
+        TableEngine(),
         SubtitleEngine(),
         ArchiveEngine(),
     ]

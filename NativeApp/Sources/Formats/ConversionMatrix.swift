@@ -19,6 +19,8 @@ enum ConversionMatrix {
             list = [.docx, .jpg, .png, .txt]
         case .txt:
             list = [.pdf, .jpg, .png, .srt, .vtt, .docx, .rtf, .rtfd, .html, .md, .epub]
+        case .csv, .tsv, .xlsx:
+            list = FileFormat.tables
         case .rtf, .rtfd, .html, .md, .epub:
             list = FileFormat.richText + [.pdf]
         case .srt, .vtt:

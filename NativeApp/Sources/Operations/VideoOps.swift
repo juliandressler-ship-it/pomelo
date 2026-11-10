@@ -3,16 +3,28 @@ import CoreImage
 import Foundation
 
 enum VideoOps {
+    /// Ausgabeformat der Video-Werkzeuge: wie die Quelle, bei reinen Eingabeformaten (FLV, MTS, MPG, 3GP) MP4.
+    static func outputFormat(for url: URL) -> FileFormat {
+        let format = FileFormat.detect(url) ?? .mp4
+        return FileFormat.video.contains(format) ? format : .mp4
+    }
+
     static func trim(_ url: URL, start: Double, end: Double, to destination: URL, progress: @escaping (Double) -> Void) async throws {
         guard start.isFinite, end.isFinite, start >= 0, end > start else { throw OpenTangerineError.invalidInput("Choose a valid trim range.") }
-        let format = FileFormat.detect(url) ?? .mp4
+        let format = FileFormat.detect(destination) ?? outputFormat(for: url)
         let range = AVExporter.timeRange(start: start, end: end)
-        if VideoEngine.nativeTargets.contains(format), await MediaInfo.isNativelyReadable(url) {
+        if VideoEngine.nativeTargets.contains(format), FileFormat.detect(url) == format, await MediaInfo.isNativelyReadable(url) {
             try await AVExporter.export(asset: AVURLAsset(url: url), to: destination, format: format, preset: AVAssetExportPresetPassthrough, timeRange: range, progress: progress)
             return
         }
         // Stream-copy seeks to a keyframe and can include content outside the chosen range.
-        let args = ["-ss", FFmpeg.timecode(start), "-i", url.path, "-t", FFmpeg.timecode(end - start)] + VideoEngine.codecArguments(for: format) + [destination.path]
+        // MPEG-Transport-/Programmströme (MTS, MPG): schnelles Suchen vor -i verliert die Videospur,
+        // deshalb dort genau (nach -i) suchen.
+        let seekAfterInput = [FileFormat.mts, .mpg].contains(FileFormat.detect(url) ?? .mp4)
+        let args = (seekAfterInput
+            ? ["-i", url.path, "-ss", FFmpeg.timecode(start), "-t", FFmpeg.timecode(end - start)]
+            : ["-ss", FFmpeg.timecode(start), "-i", url.path, "-t", FFmpeg.timecode(end - start)])
+            + VideoEngine.codecArguments(for: format) + [destination.path]
         try await FFmpeg.run(args, purpose: "Trimming video", duration: end - start, progress: progress)
     }
 
@@ -24,7 +36,7 @@ enum VideoOps {
         for index in 0..<(sorted.count - 1) {
             let start = sorted[index], end = sorted[index + 1]
             guard end - start > 0.05 else { continue }
-            let output = folder.appendingPathComponent("\(base) part \(index + 1).\(url.pathExtension)")
+            let output = folder.appendingPathComponent("\(base) part \(index + 1).\(outputFormat(for: url).fileExtension)")
             let count = Double(sorted.count - 1)
             try await trim(url, start: start, end: end, to: output) { p in progress((Double(index) + p) / count) }
             outputs.append(output)

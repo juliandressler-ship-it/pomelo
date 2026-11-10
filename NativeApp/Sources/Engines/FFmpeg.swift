@@ -50,6 +50,15 @@ enum FFmpeg {
         })
     }
 
+    /// Codec der ersten Tonspur (z.B. "aac"), nil ohne Ton oder ohne ffprobe.
+    static func audioCodec(of url: URL) async -> String? {
+        guard let probe = probePath,
+              let result = try? await Shell.run(probe, ["-v", "error", "-select_streams", "a:0", "-show_entries", "stream=codec_name", "-of", "default=noprint_wrappers=1:nokey=1", url.path]),
+              result.succeeded else { return nil }
+        let codec = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        return codec.isEmpty ? nil : codec
+    }
+
     static func summarize(_ output: String) -> String {
         let lines = output.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         if let dyld = lines.first(where: { $0.contains("Library not loaded") }) {

@@ -51,7 +51,7 @@ struct TrimVideoToolView: View {
 
     private func save() {
         let url = session.primary, start = start, end = end
-        let destination = session.outputURL(suffix: "trimmed", ext: url.pathExtension)
+        let destination = session.outputURL(suffix: "trimmed", ext: VideoOps.outputFormat(for: url).fileExtension)
         session.run(title: "Trimming", detail: "\(url.lastPathComponent)") { progress in
             try await VideoOps.trim(url, start: start, end: end, to: destination, progress: progress)
             return [destination]

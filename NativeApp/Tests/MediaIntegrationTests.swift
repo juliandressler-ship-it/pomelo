@@ -125,6 +125,63 @@ import AVFoundation
                 try check(decoded.alphaInfo != .none && decoded.alphaInfo != .noneSkipLast, "PNG transparency lost")
             }
         }
+        // Nachbau Phase 5: Audiospur als M4A/WAV, ohne Ton klare Meldung
+        for format: FileFormat in [.m4a, .wav] {
+            await test("audio track MP4 -> \(format)") {
+                let dest = out("track.\(format.fileExtension)")
+                try await Engines.convert(ConversionRequest(source: mp4, sourceFormat: .mp4, target: format, destination: dest, progress: { _ in }))
+                try await inspect(dest, duration: 2, channels: 2)
+                try check(abs(try frequency(dest, channel: 1, start: 0.2, end: 1.8) - 660) < 15, "Wrong audio content")
+            }
+        }
+        await test("audio track MKV (ffmpeg) -> M4A without re-encoding") {
+            let mkv = out("clip-a.mkv")
+            try await FFmpeg.run(["-i", mp4.path, "-c", "copy", mkv.path], purpose: "MKV fixture")
+            let dest = out("track-copy.m4a")
+            try await Engines.convert(ConversionRequest(source: mkv, sourceFormat: .mkv, target: .m4a, destination: dest, progress: { _ in }))
+            try await inspect(dest, duration: 2)
+            try check(await FFmpeg.audioCodec(of: dest) == "aac", "Expected AAC stream copy")
+        }
+        await test("silent video has no audio track to extract") {
+            do {
+                try await Engines.convert(ConversionRequest(source: silent, sourceFormat: .mkv, target: .wav, destination: out("none.wav"), progress: { _ in }))
+                throw OpenTangerineError.invalidInput("Silent video produced audio")
+            } catch OpenTangerineError.toolFailed { } catch OpenTangerineError.invalidInput(let message) where message.contains("no sound") { }
+        }
+        // Zusätzliche Eingabeformate über ffmpeg
+        let extraInputs: [(FileFormat, String, [String])] = [
+            (.flv, "flv", ["-c:v", "flv", "-c:a", "aac"]),
+            (.mts, "mts", ["-c:v", "libx264", "-c:a", "aac", "-f", "mpegts"]),
+            (.mpg, "mpg", ["-c:v", "mpeg2video", "-c:a", "mp2", "-f", "mpeg"]),
+            (.threeGP, "3gp", ["-c:v", "libx264", "-c:a", "aac", "-f", "3gp"]),
+        ]
+        for (format, ext, args) in extraInputs {
+            await test("input \(format.displayName) -> MP4 and MP3") {
+                let source = out("extra.\(ext)")
+                try await FFmpeg.run(["-i", mp4.path] + args + [source.path], purpose: "\(ext) fixture")
+                try check(FileFormat.detect(source) == format, "Detection failed for .\(ext)")
+                try check(!FileFormat.video.contains(format) && ConversionMatrix.targets(for: format).contains(.mp4), "Input-only routes")
+                let video = out("extra-\(ext).mp4")
+                try await Engines.convert(ConversionRequest(source: source, sourceFormat: format, target: .mp4, destination: video, progress: { _ in }))
+                try await inspect(video, video: true)
+                let audio = out("extra-\(ext).mp3")
+                try await Engines.convert(ConversionRequest(source: source, sourceFormat: format, target: .mp3, destination: audio, progress: { _ in }))
+                try await inspect(audio)
+                // Werkzeuge speichern reine Eingabeformate als MP4
+                try check(VideoOps.outputFormat(for: source) == .mp4, "Tool output format")
+                let trimmed = out("extra-\(ext) trimmed.mp4")
+                try await VideoOps.trim(source, start: 0.5, end: 1.5, to: trimmed) { _ in }
+                try await inspect(trimmed, video: true, duration: 1)
+            }
+        }
+        await test("input CAF -> FLAC") {
+            let caf = out("tone.caf")
+            try await FFmpeg.run(["-i", wav.path, "-c:a", "pcm_s16le", caf.path], purpose: "CAF fixture")
+            try check(FileFormat.detect(caf) == .caf, "CAF detection")
+            let dest = out("caf.flac")
+            try await Engines.convert(ConversionRequest(source: caf, sourceFormat: .caf, target: .flac, destination: dest, progress: { _ in }))
+            try await inspect(dest, duration: 2, channels: 2)
+        }
         print("MEDIA RESULT: \(passed) passed, \(failures) failed")
         if failures > 0 { exit(1) }
     }

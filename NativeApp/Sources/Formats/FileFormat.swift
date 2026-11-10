@@ -36,6 +36,9 @@ enum FileFormat: String, CaseIterable, Identifiable, Hashable {
     case jpg, png, webp, heic, tiff, svg, avif, bmp, gif
     case mp3, m4a, wav, flac, ogg, opus, aiff, wma
     case mp4, mov, mkv, webm, avi, wmv
+    // Nur als Quelle (Phase 5, über ffmpeg): Flash-Video, Camcorder (AVCHD), MPEG/DVD, Handy-Video
+    case flv, mts, mpg, threeGP = "3gp"
+    case caf
     case pdf, docx, txt
     case srt, vtt
     case zip, tar, gz, rar
@@ -53,8 +56,8 @@ enum FileFormat: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .jpg, .png, .webp, .heic, .tiff, .svg, .avif, .bmp: return .image
         case .gif: return .video
-        case .mp3, .m4a, .wav, .flac, .ogg, .opus, .aiff, .wma: return .audio
-        case .mp4, .mov, .mkv, .webm, .avi, .wmv: return .video
+        case .mp3, .m4a, .wav, .flac, .ogg, .opus, .aiff, .wma, .caf: return .audio
+        case .mp4, .mov, .mkv, .webm, .avi, .wmv, .flv, .mts, .mpg, .threeGP: return .video
         case .pdf, .docx, .txt: return .document
         case .srt, .vtt: return .subtitle
         case .zip, .tar, .gz, .rar: return .archive
@@ -86,6 +89,9 @@ enum FileFormat: String, CaseIterable, Identifiable, Hashable {
         case .gz: return ["gz", "tgz"]
         case .txt: return ["txt", "text", "md", "log"]
         case .aiff: return ["aiff", "aif"]
+        case .mts: return ["mts", "m2ts"] // ".ts" bewusst nicht: kollidiert mit TypeScript-Dateien
+        case .mpg: return ["mpg", "mpeg", "m2v", "vob"]
+        case .threeGP: return ["3gp", "3g2"]
         default: return [rawValue]
         }
     }
@@ -115,6 +121,11 @@ enum FileFormat: String, CaseIterable, Identifiable, Hashable {
         case .webm: return UTType("org.webmproject.webm")
         case .avi: return .avi
         case .wmv: return UTType("com.microsoft.windows-media-wmv")
+        case .flv: return UTType("com.adobe.flash.video")
+        case .mts: return UTType("public.avchd-mpeg-2-transport-stream")
+        case .mpg: return .mpeg
+        case .threeGP: return UTType("public.3gpp")
+        case .caf: return UTType("com.apple.coreaudio-format")
         case .pdf: return .pdf
         case .docx: return UTType("org.openxmlformats.wordprocessingml.document")
         case .txt: return .plainText

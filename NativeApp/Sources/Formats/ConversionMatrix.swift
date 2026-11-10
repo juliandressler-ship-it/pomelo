@@ -8,10 +8,11 @@ enum ConversionMatrix {
             list = FileFormat.imageTargets + [.docx]
         case .webp, .heic, .tiff, .svg, .avif, .bmp:
             list = FileFormat.imageTargets
-        case .mp3, .m4a, .wav, .flac, .ogg, .opus, .aiff, .wma:
+        case .mp3, .m4a, .wav, .flac, .ogg, .opus, .aiff, .wma, .caf:
             list = FileFormat.audio
-        case .mp4, .mov, .mkv, .webm, .avi, .wmv:
-            list = FileFormat.video + [.gif, .mp3]
+        case .mp4, .mov, .mkv, .webm, .avi, .wmv, .flv, .mts, .mpg, .threeGP:
+            // Audiospur: MP3, M4A (wenn möglich ohne Neukodierung) und WAV
+            list = FileFormat.video + [.gif, .mp3, .m4a, .wav]
         case .gif:
             list = FileFormat.video
         case .pdf:

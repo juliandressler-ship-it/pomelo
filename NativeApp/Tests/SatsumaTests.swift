@@ -40,8 +40,9 @@ struct OpenTangerineTests {
         let runner = TestRunner()
 
         runner.test("conversion matrix includes checked archive routes") {
-            // 176 bisherige Routen + 9 Archivrouten (Nachbau Phase 3; RAR nur lesen)
-            try expectEqual(ConversionMatrix.totalConversions, 185)
+            // 176 bisherige Routen + 9 Archivrouten (Phase 3) + 12 Audiospur-Routen
+            // + 40 für FLV/MTS/MPG/3GP + 8 für CAF (Phase 5, nur als Quelle)
+            try expectEqual(ConversionMatrix.totalConversions, 245)
             try expectEqual(ConversionMatrix.targets(for: .zip).count, 2)
         }
 
@@ -65,6 +66,8 @@ struct OpenTangerineTests {
         runner.test("video exports GIF and MP3, GIF does not") {
             try expect(ConversionMatrix.targets(for: .mp4).contains(.gif), "mp4 → gif")
             try expect(ConversionMatrix.targets(for: .mp4).contains(.mp3), "mp4 → mp3")
+            try expect(ConversionMatrix.targets(for: .mov).contains(.m4a) && ConversionMatrix.targets(for: .mov).contains(.wav), "audio track as M4A/WAV")
+            try expect(!FileFormat.video.contains(.mts) && FileFormat.detect(URL(fileURLWithPath: "/x/clip.ts")) == nil, "input-only formats, .ts stays TypeScript")
             try expect(!ConversionMatrix.targets(for: .gif).contains(.mp3), "gif → mp3")
             try expectEqual(ConversionMatrix.targets(for: .gif), FileFormat.video)
         }

@@ -10,6 +10,8 @@ struct LoudnessStats {
 enum AudioOps {
     static func outputFormat(for url: URL) -> FileFormat {
         let format = FileFormat.detect(url) ?? .m4a
+        // Reine Eingabeformate (z.B. CAF) werden als M4A gespeichert
+        guard FileFormat.audio.contains(format) else { return .m4a }
         if AudioEngine.nativeTargets.contains(format) || FFmpeg.isAvailable { return format }
         return .m4a
     }

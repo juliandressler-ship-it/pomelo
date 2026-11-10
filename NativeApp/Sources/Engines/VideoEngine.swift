@@ -6,8 +6,11 @@ struct VideoEngine: ConversionEngine {
 
     func supports(from: FileFormat, to: FileFormat) -> Bool {
         guard from.category == .video else { return false }
-        return to.category == .video || to == .mp3
+        return to.category == .video || Self.audioTargets.contains(to)
     }
+
+    /// Audiospur aus einem Video (Phase 5, L11).
+    static let audioTargets: Set<FileFormat> = [.mp3, .m4a, .wav]
 
     func convert(_ request: ConversionRequest) async throws {
         if Self.nativeTargets.contains(request.target), request.sourceFormat != .gif, await MediaInfo.isNativelyReadable(request.source) {
@@ -20,11 +23,41 @@ struct VideoEngine: ConversionEngine {
                 guard FFmpeg.isAvailable else { throw error }
             }
         }
-        if request.target == .mp3 {
-            try await AudioEngine.ffmpegConvert(source: request.source, destination: request.destination, target: .mp3, progress: request.progress)
+        if Self.audioTargets.contains(request.target) {
+            try await Self.extractAudio(request)
             return
         }
         try await Self.ffmpegConvert(source: request.source, destination: request.destination, target: request.target, progress: request.progress)
+    }
+
+    /// Audiospur speichern. M4A aus AAC wird nur umverpackt (keine Qualitätsverluste),
+    /// sonst nativ (AVFoundation) und erst danach über ffmpeg.
+    static func extractAudio(_ request: ConversionRequest) async throws {
+        if request.sourceFormat != .gif, await MediaInfo.isNativelyReadable(request.source) {
+            let asset = AVURLAsset(url: request.source)
+            let tracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
+            guard !tracks.isEmpty else { throw OpenTangerineError.invalidInput("This video has no sound track.") }
+            if request.target != .mp3 {
+                do {
+                    if request.target == .m4a {
+                        try await AVExporter.export(asset: asset, to: request.destination, format: .m4a, preset: AVAssetExportPresetAppleM4A, progress: request.progress)
+                    } else {
+                        try await AVExporter.exportAudioPCM(asset: asset, to: request.destination, format: request.target, progress: request.progress)
+                    }
+                    return
+                } catch {
+                    try Task.checkCancellation()
+                    guard FFmpeg.isAvailable else { throw error }
+                }
+            }
+        }
+        if request.target == .m4a, await FFmpeg.audioCodec(of: request.source) == "aac" {
+            let duration = await FFmpeg.probeDuration(request.source)
+            try await FFmpeg.run(["-i", request.source.path, "-vn", "-map", "0:a:0", "-c:a", "copy", "-map_metadata", "0", "-f", "ipod", request.destination.path],
+                                 purpose: "Extracting audio", duration: duration, progress: request.progress)
+            return
+        }
+        try await AudioEngine.ffmpegConvert(source: request.source, destination: request.destination, target: request.target, progress: request.progress)
     }
 
     static func codecArguments(for target: FileFormat, videoBitrate: Int? = nil, audioBitrate: Int? = nil) -> [String] {

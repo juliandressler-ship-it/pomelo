@@ -100,6 +100,82 @@ import PDFKit
         precondition(rawBytes.range(of: Data("Muster".utf8)) == nil, "Term still in file bytes")
         do { try PDFOps.redact(secretDoc, terms: ["does-not-exist"], to: url("none.pdf")); fatalError("Empty redaction accepted") } catch OpenTangerineError.invalidInput { }
         print("PASS PDF redaction removes text, keeps untouched pages, strips title")
+        // Nachbau Phase 6: Dokumente untereinander
+        let doc = NSMutableAttributedString()
+        let body = NSFont.systemFont(ofSize: 12)
+        doc.append(NSAttributedString(string: "Bericht Größe\n", attributes: [.font: NSFont.boldSystemFont(ofSize: 24)]))
+        doc.append(NSAttributedString(string: "Das ist ", attributes: [.font: body]))
+        doc.append(NSAttributedString(string: "wichtig", attributes: [.font: NSFont.boldSystemFont(ofSize: 12)]))
+        doc.append(NSAttributedString(string: " und ", attributes: [.font: body]))
+        doc.append(NSAttributedString(string: "kursiv", attributes: [.font: NSFontManager.shared.convert(body, toHaveTrait: .italicFontMask)]))
+        doc.append(NSAttributedString(string: ", mit ", attributes: [.font: body]))
+        doc.append(NSAttributedString(string: "Link", attributes: [.font: body, .link: URL(string: "https://example.com")!]))
+        doc.append(NSAttributedString(string: " für 12 €.\n", attributes: [.font: body]))
+        let listStyle = NSMutableParagraphStyle()
+        listStyle.textLists = [NSTextList(markerFormat: .disc, options: 0)]
+        for item in ["Erster Punkt", "Zweiter Punkt"] {
+            doc.append(NSAttributedString(string: "\t•\t\(item)\n", attributes: [.font: body, .paragraphStyle: listStyle]))
+        }
+        let docx = url("bericht.docx")
+        try doc.data(from: NSRange(location: 0, length: doc.length), documentAttributes: [.documentType: NSAttributedString.DocumentType.officeOpenXML]).write(to: docx)
+        let docxBytes = try! Data(contentsOf: docx)
+        func readBack(_ file: URL, _ format: FileFormat) async throws -> String { try await RichTextEngine.read(file, format: format).string }
+        var outputs: [FileFormat: URL] = [:]
+        for target: FileFormat in [.rtf, .rtfd, .html, .txt, .md, .epub, .pdf] {
+            let out = try await Engines.convert(ConversionRequest(source: docx, sourceFormat: .docx, target: target, destination: url("bericht.\(target.fileExtension)"), progress: { _ in }))
+            outputs[target] = out
+            precondition(out.pathExtension == target.fileExtension, "\(target) output name \(out.lastPathComponent)")
+            let text = target == .pdf ? (try PDFOps.document(out).string ?? "") : try await readBack(out, target)
+            for word in ["Bericht Größe", "wichtig", "kursiv", "Erster Punkt", "12 €"] {
+                precondition(text.contains(word), "\(target) lost '\(word)': \(text.prefix(200))")
+            }
+        }
+        precondition(try! Data(contentsOf: docx) == docxBytes, "DOCX original changed")
+        let md = try! String(contentsOf: outputs[.md]!, encoding: .utf8)
+        // Links: Apples DOCX-Schreiber lässt sie weg (macOS-Grenze); über RTF und Markdown bleiben sie erhalten
+        for part in ["# Bericht Größe", "**wichtig**", "*kursiv*", "- Erster Punkt\n- Zweiter Punkt"] {
+            precondition(md.contains(part), "Markdown lacks \(part):\n\(md)")
+        }
+        var isDir: ObjCBool = false
+        precondition(fm.fileExists(atPath: outputs[.rtfd]!.path, isDirectory: &isDir) && isDir.boolValue, "RTFD must be a package folder")
+        let epubList = try await Shell.run("/usr/bin/unzip", ["-Z1", outputs[.epub]!.path])
+        precondition(epubList.stdout.split(separator: "\n").first == "mimetype" && epubList.stdout.contains("OEBPS/content.opf"), "EPUB layout")
+        let mimeEntry = try await Shell.run("/usr/bin/unzip", ["-v", outputs[.epub]!.path, "mimetype"])
+        precondition(mimeEntry.stdout.contains("Stored"), "EPUB mimetype must be stored uncompressed")
+        let rtfLink = url("link.rtf")
+        try doc.data(from: NSRange(location: 0, length: doc.length), documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]).write(to: rtfLink)
+        let linkMD = try await Engines.convert(ConversionRequest(source: rtfLink, sourceFormat: .rtf, target: .md, destination: url("link.md"), progress: { _ in }))
+        precondition(try! String(contentsOf: linkMD, encoding: .utf8).contains("[Link](https://example.com)"), "RTF -> Markdown lost the link")
+        let linkHTML = try await Engines.convert(ConversionRequest(source: linkMD, sourceFormat: .md, target: .html, destination: url("link.html"), progress: { _ in }))
+        precondition(try! String(contentsOf: linkHTML, encoding: .utf8).contains("https://example.com"), "Markdown -> HTML lost the link")
+        // Markdown zurück: Überschrift größer, fett bleibt fett
+        let mdSource = url("notiz.md")
+        try "# Titel\n\nText mit **fett** und `code`.\n\n1. eins\n2. zwei\n".write(to: mdSource, atomically: true, encoding: .utf8)
+        let mdDocx = try await Engines.convert(ConversionRequest(source: mdSource, sourceFormat: .md, target: .docx, destination: url("notiz.docx"), progress: { _ in }))
+        let mdRead = try await RichTextEngine.read(mdDocx, format: .docx)
+        let blocks = Blocks.parse(mdRead)
+        precondition(blocks.first?.kind == .heading(1) && blocks.first?.plainText == "Titel", "Heading lost: \(blocks)")
+        precondition(blocks.contains { $0.runs.contains { $0.bold && $0.text == "fett" } }, "Bold lost")
+        precondition(blocks.filter { $0.kind == .numbered }.count == 2, "Numbered list lost")
+        // EPUB wieder lesen und weiter nach Markdown
+        let back = try await Engines.convert(ConversionRequest(source: outputs[.epub]!, sourceFormat: .epub, target: .md, destination: url("aus-epub.md"), progress: { _ in }))
+        precondition(try! String(contentsOf: back, encoding: .utf8).contains("**wichtig**"), "EPUB -> Markdown lost formatting")
+        // Lange Texte werden auf mehrere PDF-Seiten umbrochen
+        let long = url("lang.txt")
+        try (1...400).map { "Absatz \($0): Ein ganz normaler Satz, der etwas Platz braucht." }.joined(separator: "\n").write(to: long, atomically: true, encoding: .utf8)
+        let longPDF = try await Engines.convert(ConversionRequest(source: url("lang.txt"), sourceFormat: .txt, target: .pdf, destination: url("lang.pdf"), progress: { _ in }))
+        precondition(try! PDFOps.document(longPDF).pageCount > 3, "PDF pagination")
+        let mdLong = url("lang.md")
+        try (1...300).map { "Absatz **\($0)** mit Text." }.joined(separator: "\n\n").write(to: mdLong, atomically: true, encoding: .utf8)
+        let mdPDF = try await Engines.convert(ConversionRequest(source: mdLong, sourceFormat: .md, target: .pdf, destination: url("lang-md.pdf"), progress: { _ in }))
+        let mdPDFDoc = try PDFOps.document(mdPDF)
+        precondition(mdPDFDoc.pageCount > 3 && (mdPDFDoc.string ?? "").contains("Absatz 300"), "Rich PDF pagination")
+        // HTML ohne Netz: entfernte Bilder und Skripte fliegen raus, Links bleiben
+        let unsafe = "<p>Hallo <a href=\"https://example.com/page\">Seite</a><img src=\"https://tracker.example/pixel.png\"><img src='//cdn.example/x.png'><img src=\"bild.png\"></p><script>fetch('https://x')</script><link rel=\"stylesheet\" href=\"https://cdn/x.css\"><div style=\"background:url(https://x/y.png)\">x</div>"
+        let cleaned = HTMLSafety.offline(unsafe)
+        precondition(!cleaned.contains("tracker.example") && !cleaned.contains("cdn.example") && !cleaned.contains("<script") && !cleaned.contains("cdn/x.css") && !cleaned.contains("url(https"), "Remote references kept: \(cleaned)")
+        precondition(cleaned.contains("href=\"https://example.com/page\"") && cleaned.contains("src=\"bild.png\""), "Links or local images removed: \(cleaned)")
+        print("PASS documents: DOCX to RTF/RTFD/HTML/TXT/Markdown/EPUB/PDF keep text and formatting, Markdown and EPUB round trips, PDF pagination, offline HTML")
         let reordered = try PDFOps.document(url("reordered.pdf"))
         precondition(reordered.page(at: 0)!.rotation == 90 && reordered.page(at: 0)!.string!.contains("Second page"))
         for strong in [false, true] {

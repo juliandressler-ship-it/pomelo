@@ -42,7 +42,8 @@ struct OpenTangerineTests {
         runner.test("conversion matrix includes checked archive routes") {
             // 176 bisherige Routen + 9 Archivrouten (Phase 3) + 12 Audiospur-Routen
             // + 40 für FLV/MTS/MPG/3GP + 8 für CAF (Phase 5, nur als Quelle)
-            try expectEqual(ConversionMatrix.totalConversions, 245)
+            // + 48 Dokumentrouten DOCX/RTF/RTFD/HTML/TXT/Markdown/EPUB (Phase 6)
+            try expectEqual(ConversionMatrix.totalConversions, 293)
             try expectEqual(ConversionMatrix.targets(for: .zip).count, 2)
         }
 
@@ -74,11 +75,12 @@ struct OpenTangerineTests {
 
         runner.test("PDF, TXT, subtitle and archive targets") {
             try expectEqual(ConversionMatrix.targets(for: .pdf), [.docx, .jpg, .png, .txt])
-            try expectEqual(ConversionMatrix.targets(for: .txt), [.pdf, .jpg, .png, .srt, .vtt])
+            try expectEqual(ConversionMatrix.targets(for: .txt), [.pdf, .jpg, .png, .srt, .vtt, .docx, .rtf, .rtfd, .html, .md, .epub])
+            try expectEqual(ConversionMatrix.targets(for: .docx), [.rtf, .rtfd, .html, .txt, .md, .epub, .pdf])
+            try expect(FileFormat.detect(URL(fileURLWithPath: "/x/a.md")) == .md && FileFormat.detect(URL(fileURLWithPath: "/x/a.htm")) == .html, "document detection")
             try expectEqual(ConversionMatrix.targets(for: .srt), [.vtt, .txt])
             try expectEqual(ConversionMatrix.targets(for: .zip), [.tar, .gz])
             try expectEqual(ConversionMatrix.targets(for: .rar), [.zip, .tar, .gz])
-            try expectEqual(ConversionMatrix.targets(for: .docx), [])
         }
 
         runner.test("mixed selection intersects targets") {

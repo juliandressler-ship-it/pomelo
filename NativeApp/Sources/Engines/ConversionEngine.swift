@@ -19,6 +19,7 @@ enum Engines {
         AudioEngine(),
         VideoEngine(),
         DocumentEngine(),
+        RichTextEngine(),
         SubtitleEngine(),
         ArchiveEngine(),
     ]
@@ -53,7 +54,7 @@ enum Engines {
             if FileManager.default.fileExists(atPath: temp.path, isDirectory: &isDirectory) {
                 // moveItem refuses an existing destination; never delete another file.
                 var final = request.destination
-                if isDirectory.boolValue {
+                if isDirectory.boolValue, !request.target.isPackage {
                     let base = request.destination.deletingPathExtension().lastPathComponent
                     final = ConversionMatrix.uniqueDirectory(directory: request.destination.deletingLastPathComponent(),
                                                              name: "\(base) \(request.target.displayName) pages")

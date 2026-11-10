@@ -81,7 +81,7 @@ enum FinderSelection {
         }
         let paths = (result.stringValue ?? "").split(separator: "\n").map(String.init)
         // Ordner öffnen kein Rad, wie beim Ziehen
-        let urls = paths.map { URL(fileURLWithPath: $0) }.filter { !$0.hasDirectoryPath }
+        let urls = paths.map { URL(fileURLWithPath: $0) }.filter { !$0.hasDirectoryPath || FileFormat.detect($0)?.isPackage == true }
         return .success(urls)
     }
 }

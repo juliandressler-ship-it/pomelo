@@ -18,14 +18,16 @@ enum ConversionMatrix {
         case .pdf:
             list = [.docx, .jpg, .png, .txt]
         case .txt:
-            list = [.pdf, .jpg, .png, .srt, .vtt]
+            list = [.pdf, .jpg, .png, .srt, .vtt, .docx, .rtf, .rtfd, .html, .md, .epub]
+        case .rtf, .rtfd, .html, .md, .epub:
+            list = FileFormat.richText + [.pdf]
         case .srt, .vtt:
             list = FileFormat.subtitles + [.txt]
         case .zip, .tar, .gz, .rar:
             // Umpacken mit geprüftem Entpacken (ArchiveEngine). RAR lässt sich lesen, nicht schreiben.
             list = [.zip, .tar, .gz]
         case .docx:
-            list = []
+            list = FileFormat.richText + [.pdf]
         }
         return list.filter { $0 != source }
     }

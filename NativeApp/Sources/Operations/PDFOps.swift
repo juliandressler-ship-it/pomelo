@@ -225,6 +225,66 @@ enum PDFOps {
         try FileManager.default.moveItem(at: temp, to: destination)
     }
 
+    // MARK: Echte Schwärzung (Phase 4, L3)
+
+    /// Fundstellen je Seite (Seitenindex -> Rechtecke im Seitenkoordinatensystem).
+    static func redactionHits(in document: PDFDocument, terms: [String]) -> [Int: [CGRect]] {
+        var hits: [Int: [CGRect]] = [:]
+        for term in terms.map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) }) where !term.isEmpty {
+            for selection in document.findString(term, withOptions: [.caseInsensitive]) {
+                for page in selection.pages {
+                    let index = document.index(for: page)
+                    // Jede Zeile einzeln, damit mehrzeilige Treffer nicht als großer Block erscheinen
+                    for line in selection.selectionsByLine() where line.pages.contains(page) {
+                        hits[index, default: []].append(line.bounds(for: page).insetBy(dx: -1.5, dy: -1.5))
+                    }
+                }
+            }
+        }
+        return hits
+    }
+
+    /// Schwärzt alle Fundstellen. Betroffene Seiten werden als Bild neu aufgebaut (200 dpi):
+    /// Der Text darunter ist danach nicht mehr in der Datei. Andere Seiten bleiben unverändert.
+    /// Dokument-Metadaten und Lesezeichen werden entfernt, weil sie die Begriffe enthalten können.
+    @discardableResult
+    static func redact(_ url: URL, terms: [String], to destination: URL, dpi: CGFloat = 200, progress: (Double) -> Void = { _ in }) throws -> (pages: Int, areas: Int) {
+        let document = try self.document(url)
+        let hits = redactionHits(in: document, terms: terms)
+        guard !hits.isEmpty else { throw OpenTangerineError.invalidInput("None of the terms were found as text in this PDF. Scanned pages without a text layer cannot be searched.") }
+        let scale = dpi / 72
+        for (step, index) in hits.keys.sorted().enumerated() {
+            guard let page = document.page(at: index), let raw = page.pageRef else { continue }
+            let box = page.bounds(for: .mediaBox)
+            let width = Int((box.width * scale).rounded()), height = Int((box.height * scale).rounded())
+            guard width > 0, height > 0, width * height <= 60_000_000,
+                  let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                          space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+            else { throw OpenTangerineError.encodeFailed("PDF page \(index + 1)") }
+            context.setFillColor(CGColor(gray: 1, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            context.scaleBy(x: scale, y: scale)
+            context.translateBy(x: -box.minX, y: -box.minY)
+            context.drawPDFPage(raw) // ohne Drehung, damit die Trefferkoordinaten passen
+            context.setFillColor(CGColor(gray: 0, alpha: 1))
+            for rect in hits[index] ?? [] { context.fill(rect) }
+            guard let image = context.makeImage(), let newPage = PDFPage(image: NSImage(cgImage: image, size: box.size)) else {
+                throw OpenTangerineError.encodeFailed("PDF page \(index + 1)")
+            }
+            newPage.rotation = page.rotation
+            document.removePage(at: index)
+            document.insert(newPage, at: index)
+            progress(Double(step + 1) / Double(hits.count))
+        }
+        document.documentAttributes = [:]
+        document.outlineRoot = nil
+        let temp = destination.deletingLastPathComponent().appendingPathComponent(".opentangerine-\(UUID().uuidString).pdf")
+        defer { try? FileManager.default.removeItem(at: temp) }
+        guard document.write(to: temp) else { throw OpenTangerineError.encodeFailed(destination.lastPathComponent) }
+        try FileManager.default.moveItem(at: temp, to: destination)
+        return (hits.count, hits.values.reduce(0) { $0 + $1.count })
+    }
+
     static func fromImages(_ urls: [URL], to destination: URL, progress: @escaping (Double) -> Void) throws {
         let output = PDFDocument()
         for (index, url) in urls.enumerated() {

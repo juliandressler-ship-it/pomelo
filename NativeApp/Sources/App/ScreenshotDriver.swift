@@ -66,6 +66,8 @@ enum ScreenshotDriver {
             .compress: [photo, pdf, video],
             .editMetadata: [photo],
             .editImage: [photo],
+            .annotateImage: [photo],
+            .redactPDF: [pdf],
             .frameImage: [photo],
             .cropImage: [photo],
             .redactImage: [photo],

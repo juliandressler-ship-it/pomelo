@@ -10,6 +10,7 @@ enum ToolID: String, CaseIterable, Identifiable {
     case compress
     case editMetadata
     case editImage
+    case annotateImage
     case frameImage
     case cropImage
     case redactImage
@@ -33,6 +34,7 @@ enum ToolID: String, CaseIterable, Identifiable {
     case mergePDF
     case organizePDF
     case splitPDF
+    case redactPDF
 
     var id: String { rawValue }
 
@@ -41,6 +43,7 @@ enum ToolID: String, CaseIterable, Identifiable {
         case .compress: return "Compress"
         case .editMetadata: return "Edit metadata"
         case .editImage: return "Edit photo"
+        case .annotateImage: return "Annotate image"
         case .frameImage: return "Add a background"
         case .cropImage: return "Crop image"
         case .redactImage: return "Redact photo"
@@ -64,6 +67,7 @@ enum ToolID: String, CaseIterable, Identifiable {
         case .mergePDF: return "Merge PDFs"
         case .organizePDF: return "Organize PDF pages"
         case .splitPDF: return "Split PDF"
+        case .redactPDF: return "Redact PDF"
         }
     }
 
@@ -72,9 +76,10 @@ enum ToolID: String, CaseIterable, Identifiable {
         case .compress: return "Compressing"
         case .editMetadata: return "Editing metadata"
         case .editImage: return "Editing photo"
+        case .annotateImage: return "Annotating"
         case .frameImage: return "Adding background"
         case .cropImage, .cropVideo: return "Cropping"
-        case .redactImage, .redactVideo: return "Redacting"
+        case .redactImage, .redactVideo, .redactPDF: return "Redacting"
         case .resizeImage: return "Resizing"
         case .rotateImage: return "Rotating"
         case .createPDF: return "Creating PDF"
@@ -99,9 +104,10 @@ enum ToolID: String, CaseIterable, Identifiable {
         case .compress: return "COMPRESS"
         case .editMetadata: return "METADATA"
         case .editImage: return "EDIT"
+        case .annotateImage: return "ANNOTATE"
         case .frameImage: return "ADD BG"
         case .cropImage, .cropVideo: return "CROP"
-        case .redactImage, .redactVideo: return "REDACT"
+        case .redactImage, .redactVideo, .redactPDF: return "REDACT"
         case .resizeImage: return "RESIZE"
         case .rotateImage: return "ROTATE"
         case .createPDF: return "PDF"
@@ -128,7 +134,8 @@ enum ToolID: String, CaseIterable, Identifiable {
         case .editImage: return "slider.horizontal.3"
         case .frameImage: return "photo.artframe"
         case .cropImage, .cropVideo: return "crop"
-        case .redactImage: return "eye.slash"
+        case .redactImage, .redactPDF: return "eye.slash"
+        case .annotateImage: return "pencil.tip.crop.circle"
         case .redactVideo: return "video.slash"
         case .resizeImage: return "arrow.up.left.and.arrow.down.right"
         case .rotateImage: return "rotate.right"
@@ -154,13 +161,13 @@ enum ToolID: String, CaseIterable, Identifiable {
         switch self {
         case .compress, .editMetadata:
             return [.image, .video, .audio, .document]
-        case .editImage, .frameImage, .cropImage, .redactImage, .resizeImage, .rotateImage, .createPDF, .createCollage:
+        case .editImage, .annotateImage, .frameImage, .cropImage, .redactImage, .resizeImage, .rotateImage, .createPDF, .createCollage:
             return [.image]
         case .trimVideo, .cropVideo, .changeVideoSpeed, .joinVideos, .videoSnapshots, .splitVideo, .redactVideo:
             return [.video]
         case .normalizeAudio, .audioToVideo, .trimAudio, .audioChannels, .redactAudio:
             return [.audio]
-        case .annotatePDF, .mergePDF, .organizePDF, .splitPDF:
+        case .annotatePDF, .mergePDF, .organizePDF, .splitPDF, .redactPDF:
             return [.document]
         }
     }
@@ -179,7 +186,7 @@ enum ToolID: String, CaseIterable, Identifiable {
         guard categories.count == 1, let category = categories.first, self.categories.contains(category) else { return false }
         if category == .document {
             switch self {
-            case .annotatePDF, .mergePDF, .organizePDF, .splitPDF, .editMetadata, .compress:
+            case .annotatePDF, .mergePDF, .organizePDF, .splitPDF, .redactPDF, .editMetadata, .compress:
                 guard formats.allSatisfy({ $0 == .pdf }) else { return false }
             default:
                 return false

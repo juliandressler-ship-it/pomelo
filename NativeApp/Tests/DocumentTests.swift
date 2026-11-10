@@ -80,6 +80,26 @@ import PDFKit
         // macOS schreibt einen PDF/A-OutputIntent und XMP mit pdfaid:part 2 / conformance B (komprimiert)
         precondition(pdfaBytes.range(of: Data("/GTS_PDFA1".utf8)) != nil && pdfaBytes.range(of: Data("/Metadata".utf8)) != nil, "PDF/A identification missing")
         print("PASS PDF compression keeps \(formWidgets) form fields, target size shrinks, PDF/A-2 written with text")
+        // Nachbau Phase 4: echte PDF-Schwärzung
+        let secretPage = url("secret.pdf")
+        try TextRenderer.writePDF("Customer Max Muster\nIBAN DE89 3704 0044 0532 0130 00\nThis line stays.", to: secretPage)
+        let secretDoc = url("secret-two.pdf")
+        try PDFOps.merge([secretPage, second], to: secretDoc)
+        let secretBefore = try PDFOps.document(secretDoc)
+        secretBefore.documentAttributes = [PDFDocumentAttribute.titleAttribute: "Max Muster file"]
+        precondition(secretBefore.write(to: secretDoc))
+        let redactedPDF = url("secret redacted.pdf")
+        let result = try PDFOps.redact(secretDoc, terms: ["Max Muster", "DE89 3704"], to: redactedPDF)
+        let redactedDoc = try PDFOps.document(redactedPDF)
+        let remaining = redactedDoc.string ?? ""
+        precondition(result.pages == 1 && result.areas >= 2, "got \(result)")
+        precondition(!remaining.contains("Muster") && !remaining.contains("DE89"), "Redacted text still extractable")
+        precondition(redactedDoc.pageCount == 2 && remaining.contains("Second page"), "Untouched page lost")
+        precondition((redactedDoc.documentAttributes?[PDFDocumentAttribute.titleAttribute] as? String) == nil, "Title metadata kept")
+        let rawBytes = try! Data(contentsOf: redactedPDF)
+        precondition(rawBytes.range(of: Data("Muster".utf8)) == nil, "Term still in file bytes")
+        do { try PDFOps.redact(secretDoc, terms: ["does-not-exist"], to: url("none.pdf")); fatalError("Empty redaction accepted") } catch OpenTangerineError.invalidInput { }
+        print("PASS PDF redaction removes text, keeps untouched pages, strips title")
         let reordered = try PDFOps.document(url("reordered.pdf"))
         precondition(reordered.page(at: 0)!.rotation == 90 && reordered.page(at: 0)!.string!.contains("Second page"))
         for strong in [false, true] {

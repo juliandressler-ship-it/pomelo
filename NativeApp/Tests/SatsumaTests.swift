@@ -45,8 +45,8 @@ struct OpenTangerineTests {
             try expectEqual(ConversionMatrix.targets(for: .zip).count, 2)
         }
 
-        runner.test("25 advanced tools") {
-            try expectEqual(ToolID.total, 26)
+        runner.test("27 advanced tools (Annotate und Redact PDF neu)") {
+            try expectEqual(ToolID.total, 28)
         }
 
         runner.test("no format converts to itself") {
@@ -189,7 +189,8 @@ struct OpenTangerineTests {
             try expect(ToolID.mergePDF.applies(to: [.pdf]), "start merge from one PDF")
             try expect(!ToolID.annotatePDF.applies(to: [.pdf, .pdf]), "edit one document at a time")
             try expectEqual(ToolID.available(for: [.mp3]).count, 7)
-            try expectEqual(ToolID.available(for: [.pdf]).count, 6)
+            try expectEqual(ToolID.available(for: [.pdf]).count, 7) // + Redact PDF (Phase 4)
+            try expect(ToolID.annotateImage.applies(to: [.png]) && !ToolID.annotateImage.applies(to: [.pdf]), "annotate images only")
         }
 
         runner.test("compression presets") {

@@ -178,7 +178,11 @@ final class RadialController: DragMonitorDelegate {
             return
         }
         if advanced {
-            view.items = ToolID.available(for: formats).map(RadialItem.init(tool:))
+            // Bilder: Hintergrund entfernen und Codes lesen; PDFs: Codes lesen
+            let images = formats.allSatisfy { $0.category == .image }
+            let pdfs = formats.allSatisfy { $0 == .pdf }
+            let extras: [FileAction] = images ? [.removeBackground, .readCodes] : pdfs ? [.readCodes] : []
+            view.items = ToolID.available(for: formats).map(RadialItem.init(tool:)) + extras.map(RadialItem.init(fileAction:))
             view.emptyMessage = "No tools for this selection"
         } else {
             let allPDF = formats.allSatisfy { $0 == .pdf }

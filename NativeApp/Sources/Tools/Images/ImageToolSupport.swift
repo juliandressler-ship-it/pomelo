@@ -13,11 +13,12 @@ enum ImageToolSupport {
     }
 
     @MainActor
-    static func save(_ session: ToolSession, suffix: String, format: FileFormat? = nil, title: String? = nil, render: @escaping () async throws -> CGImage) {
+    /// keepMetadata: false beim Schwärzen, damit weder EXIF/GPS noch eingebettete Vorschaubilder das Original verraten.
+    static func save(_ session: ToolSession, suffix: String, format: FileFormat? = nil, title: String? = nil, keepMetadata: Bool = true, render: @escaping () async throws -> CGImage) {
         let output = format ?? outputFormat(for: session.primary)
         let destination = session.outputURL(suffix: suffix, ext: output.fileExtension)
         let quality = AppSettings.shared.jpegQuality
-        let metadata = ImageIOBridge.properties(session.primary)
+        let metadata = keepMetadata ? ImageIOBridge.properties(session.primary) : [:]
         session.run(title: title ?? session.tool.progressTitle, detail: session.primary.lastPathComponent) { progress in
             let image = try await render()
             progress(0.7)

@@ -59,6 +59,10 @@ struct RedactImageToolView: View {
                     ColorSwatchPicker(title: "Color", color: $color)
                 }
                 Text(selected == nil ? "Applies to new areas." : "Applies to the selected area.").font(.caption2).foregroundStyle(.secondary)
+                if !(selected.flatMap { styles[$0] } ?? defaultStyle).isSecure {
+                    Label("Blur and pixelate only hide visually. Use Solid for text, faces or numbers that must not be recovered.", systemImage: "exclamationmark.triangle")
+                        .font(.caption2).foregroundStyle(.orange)
+                }
             }
             SidebarSection(title: "Areas (\(rects.count))") {
                 if rects.isEmpty {
@@ -133,7 +137,8 @@ struct RedactImageToolView: View {
     private func save() {
         guard let original = document.original else { return }
         let redactions = redactions
-        ImageToolSupport.save(session, suffix: "redacted") {
+        // Schwärzen speichert ohne Metadaten (kein EXIF, GPS oder Vorschaubild vom Original)
+        ImageToolSupport.save(session, suffix: "redacted", keepMetadata: false) {
             let output = ImageOps.redact(CIImage(cgImage: original), redactions: redactions)
             guard let image = ImageToolSupport.cgImage(output) else { throw OpenTangerineError.encodeFailed("Rendering failed") }
             return image

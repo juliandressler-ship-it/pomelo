@@ -106,6 +106,52 @@ import PDFKit
         try await MetadataOps.write(pdfURL,edits:await MetadataOps.read(pdfURL),removeAll:false,removeSensitive:true,to:pdfClean,progress:{_ in})
         let pdfFields=await MetadataOps.read(pdfClean)
         check(!pdfFields.contains {$0.key=="Author"} && pdfFields.contains {$0.value=="Keep title"}, "PDF sensitive stripping retains title")
+        // Nachbau Phase 4
+        // QR-Code lesen: Bild und PDF
+        let qrFilter = CIFilter(name: "CIQRCodeGenerator")!
+        qrFilter.setValue(Data("https://example.com/open-tangerine".utf8), forKey: "inputMessage")
+        let qrCI = qrFilter.outputImage!.transformed(by: CGAffineTransform(scaleX: 12, y: 12))
+        let qrPadded = qrCI.transformed(by: CGAffineTransform(translationX: 40, y: 40)).composited(over: CIImage(color: .white).cropped(to: qrCI.extent.insetBy(dx: -40, dy: -40).offsetBy(dx: 40, dy: 40)))
+        let qrImage = ImageOps.render(qrPadded)!
+        let qrURL = dir.appendingPathComponent("qr.png")
+        try ImageIOBridge.write(qrImage, to: qrURL, format: .png)
+        let qrCodes = try VisionOps.codes(in: qrURL)
+        check(qrCodes.map(\.text) == ["https://example.com/open-tangerine"] && qrCodes.first?.kind == "QR code", "QR code read from image")
+        let qrPDF = dir.appendingPathComponent("qr.pdf")
+        try PDFOps.fromImages([qrURL], to: qrPDF, progress: { _ in })
+        let pdfCodes = try VisionOps.codes(in: qrPDF)
+        check(pdfCodes.first?.text == "https://example.com/open-tangerine" && pdfCodes.first?.page == 1, "QR code read from PDF page 1")
+        check(try VisionOps.codes(in: original).isEmpty, "no code in noise image")
+        // Beschriften: Rahmen landet als Pixel im Bild, Größe bleibt
+        let white = CGContext(data: nil, width: 200, height: 100, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        white.setFillColor(CGColor(gray: 1, alpha: 1)); white.fill(CGRect(x: 0, y: 0, width: 200, height: 100))
+        let blank = white.makeImage()!
+        let red = CGColor(srgbRed: 1, green: 0, blue: 0, alpha: 1)
+        let annotated = try AnnotationRenderer.render(blank, marks: [AnnotationMark(kind: .rectangle, start: CGPoint(x: 20, y: 10), end: CGPoint(x: 120, y: 60), color: red, size: 6)])
+        let ap = pixels(annotated)
+        func px(_ x: Int, _ y: Int) -> (UInt8, UInt8, UInt8) { let i = (y * 200 + x) * 4; return (ap[i], ap[i + 1], ap[i + 2]) }
+        check(annotated.width == 200 && annotated.height == 100, "annotation keeps image size")
+        check(px(20, 30) == (255, 0, 0) && px(70, 35) == (255, 255, 255), "annotation frame drawn at the right place, inside untouched")
+        // Echtes Schwärzen: Pixel im Bereich sind vollständig schwarz
+        let secret = ImageOps.render(ImageOps.redact(CIImage(cgImage: original), redactions: [Redaction(rect: CGRect(x: 10.4, y: 10.6, width: 30.3, height: 20.2))]))!
+        let sp = pixels(secret)
+        var allBlack = true
+        for y in 11..<30 { for x in 11..<40 { let i = (y * 96 + x) * 4; if sp[i] != 0 || sp[i + 1] != 0 || sp[i + 2] != 0 { allBlack = false } } }
+        check(allBlack, "solid redaction overwrites every pixel in the area")
+        check(RedactionStyle.solid.isSecure && !RedactionStyle.blur.isSecure && !RedactionStyle.pixelate.isSecure, "only solid redaction counts as secure")
+        // Hintergrund entfernen: dunkles Motiv auf hellem Grund
+        let subject = CGContext(data: nil, width: 640, height: 480, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        subject.setFillColor(CGColor(srgbRed: 0.93, green: 0.95, blue: 0.97, alpha: 1)); subject.fill(CGRect(x: 0, y: 0, width: 640, height: 480))
+        subject.setFillColor(CGColor(srgbRed: 0.9, green: 0.35, blue: 0.1, alpha: 1)); subject.fillEllipse(in: CGRect(x: 200, y: 120, width: 240, height: 240))
+        subject.setFillColor(CGColor(srgbRed: 0.2, green: 0.5, blue: 0.2, alpha: 1)); subject.fillEllipse(in: CGRect(x: 330, y: 330, width: 90, height: 50))
+        do {
+            let cut = try VisionOps.removeBackground(subject.makeImage()!)
+            let cp = pixels(cut)
+            let corner = cp[3], centre = cp[((240) * 640 + 320) * 4 + 3]
+            check(cut.width == 640 && corner < 20 && centre > 200, "background removed: corner transparent (\(corner)), subject kept (\(centre))")
+        } catch {
+            check(false, "background removal: \(error.localizedDescription)")
+        }
         print("Image tool failures: \(failures)")
         if failures > 0 { exit(1) }
     }

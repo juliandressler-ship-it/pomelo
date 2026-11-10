@@ -32,6 +32,8 @@ enum RedactionStyle: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
+    /// Nur "Solid" überschreibt die Pixel vollständig. Weichzeichnen und Verpixeln verdecken nur.
+    var isSecure: Bool { self == .solid }
 }
 
 struct Redaction: Identifiable, Equatable {
@@ -145,7 +147,8 @@ enum ImageOps {
             let patch: CIImage
             switch redaction.style {
             case .solid:
-                patch = CIImage(color: CIColor(cgColor: redaction.color)).cropped(to: rect)
+                // auf ganze Pixel nach außen runden, damit am Rand nichts durchscheint
+                patch = CIImage(color: CIColor(cgColor: redaction.color)).cropped(to: rect.integral)
             case .blur:
                 let blur = CIFilter.gaussianBlur(); blur.inputImage = image.clampedToExtent(); blur.radius = Float(max(12, min(rect.width, rect.height) / 8))
                 patch = (blur.outputImage ?? image).cropped(to: rect)

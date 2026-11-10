@@ -125,6 +125,7 @@ struct ToolRootView: View {
             case .compress: CompressToolView(session: session)
             case .editMetadata: MetadataToolView(session: session)
             case .editImage: EditImageToolView(session: session)
+            case .annotateImage: AnnotateImageToolView(session: session)
             case .frameImage: FrameImageToolView(session: session)
             case .cropImage: CropImageToolView(session: session)
             case .redactImage: RedactImageToolView(session: session)
@@ -148,6 +149,7 @@ struct ToolRootView: View {
             case .mergePDF: MergePDFToolView(session: session)
             case .organizePDF: OrganizePDFToolView(session: session)
             case .splitPDF: SplitPDFToolView(session: session)
+            case .redactPDF: RedactPDFToolView(session: session)
             }
         }
         .frame(minWidth: 560, minHeight: 360)

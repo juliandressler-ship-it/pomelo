@@ -3,3 +3,8 @@ GPL-3.0-only. See LICENSE.
 Native app substantially based on Satsuma, Copyright 2026 plyght, MIT.
 See THIRD_PARTY_NOTICES.md and NativeApp/LICENSE.
 Independent of Tangerine; no endorsement implied.
+
+Modified version: changed by Julian Dressler (https://github.com/juliandressler-ship-it) in November 2026 -
+new design and logo, offline only (no update check), archives, file actions, PDF
+compression/PDF/A, image and PDF redaction, background removal, code reading and
+annotation. Distributed under the same GPL-3.0-only terms.

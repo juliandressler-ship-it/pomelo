@@ -374,16 +374,26 @@ struct SettingsView: View {
             }
             .padding(.vertical, 8)
         }
-        Section("Credits") {
-            LabeledContent("Original app", value: "Sintax Error Private Limited")
-            LabeledContent("Created by") {
-                Link("Hemaangg", destination: URL(string: "https://www.instagram.com/hemaangg/")!)
+        Section("Developer") {
+            LabeledContent("Developed by", value: "Julian Dressler")
+            LabeledContent("GitHub") {
+                Link("juliandressler-ship-it", destination: URL(string: "https://github.com/juliandressler-ship-it")!)
             }
-            LabeledContent("Based on", value: "Satsuma by plyght (MIT)")
+            LabeledContent("This version", value: "New design, logo, archives, PDF and image tools, offline only")
         }
         Section {
-            Text("GPL-3.0-only. Independent of Tangerine. Some features are experimental, so check important results.")
-                .font(.callout).foregroundStyle(.secondary)
+            LabeledContent("Open Tangerine") {
+                Link("Sintax Error Private Limited", destination: URL(string: "https://github.com/sintaxerrorpvtltd/Open-Tangerine")!)
+            }
+            LabeledContent("Original author") {
+                Link("Hemaangg", destination: URL(string: "https://www.instagram.com/hemaangg/")!)
+            }
+            LabeledContent("Satsuma", value: "plyght (MIT)")
+        } header: {
+            Text("Based on")
+        } footer: {
+            // GPL-3.0 §5a: veränderte Fassungen müssen das deutlich sagen, mit Datum.
+            Text("Modified version of Open Tangerine, changed by Julian Dressler in November 2026. Licensed under GPL-3.0-only; the source code stays open. Independent of Tangerine. Some features are experimental, so check important results.")
         }
     }
 }

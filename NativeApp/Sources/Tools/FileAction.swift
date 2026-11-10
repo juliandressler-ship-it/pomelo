@@ -5,7 +5,9 @@ enum FileAction: String, CaseIterable, Hashable {
     case reveal = "Reveal", airdrop = "AirDrop", float = "Float", copy = "Copy Files", paths = "Copy Paths"
     case move = "Move", duplicate = "Duplicate", zip = "ZIP", terminal = "Terminal", hash = "SHA-256"
     // Nur im Konvertierungsrad: Archive entpacken, PDF als PDF/A sichern
-    case extract = "Extract", pdfa = "PDF/A"
+    case extract = "EXTRACT", pdfa = "PDF/A"
+    // Nur im Werkzeugrad (Phase 4)
+    case removeBackground = "REMOVE BG", readCodes = "READ CODE"
 
     /// Reihenfolge im Aktionsrad (Control).
     static let wheel: [FileAction] = [.reveal, .airdrop, .float, .copy, .paths, .move, .duplicate, .zip, .terminal, .hash]
@@ -24,6 +26,8 @@ enum FileAction: String, CaseIterable, Hashable {
         case .hash: return "number"
         case .extract: return "shippingbox.and.arrow.backward"
         case .pdfa: return "checkmark.seal"
+        case .removeBackground: return "person.crop.rectangle"
+        case .readCodes: return "qrcode.viewfinder"
         }
     }
 
@@ -41,6 +45,8 @@ enum FileAction: String, CaseIterable, Hashable {
         case .hash: return "Copy SHA-256 checksum"
         case .extract: return "Extract next to the archive"
         case .pdfa: return "Save as PDF/A for archiving"
+        case .removeBackground: return "Remove the background"
+        case .readCodes: return "Read QR code or barcode"
         }
     }
 
@@ -100,6 +106,14 @@ enum FileAction: String, CaseIterable, Hashable {
             }
         case .terminal:
             Self.openInTerminal(urls)
+        case .removeBackground:
+            for url in urls {
+                JobRunner.shared.run(title: "Removing background", detail: url.lastPathComponent, symbol: symbol) { _ in
+                    [try VisionOps.removeBackground(from: url)]
+                }
+            }
+        case .readCodes:
+            VisionOps.readAndShow(urls)
         case .reveal: NSWorkspace.shared.activateFileViewerSelecting(urls)
         case .copy:
             NSPasteboard.general.clearContents()

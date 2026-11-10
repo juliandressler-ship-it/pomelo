@@ -12,13 +12,18 @@ struct CompressToolView: View {
     enum SizeUnit: String, CaseIterable, Identifiable {
         case kilobytes = "KB"
         case megabytes = "MB"
+        case percent = "%"
         var id: String { rawValue }
         var multiplier: Double { self == .kilobytes ? 1_000 : 1_000_000 }
     }
 
     private var totalSize: Int64 { session.files.reduce(0) { $0 + FileSizeFormatter.size(of: $1) } }
-    private var perFileTarget: Int64? {
-        guard useTarget else { return nil }
+    /// Zielgröße je Datei; bei "%" bezogen auf die Originalgröße der jeweiligen Datei.
+    private func target(for url: URL) -> Int64? {
+        guard useTarget, targetValue > 0 else { return nil }
+        if targetUnit == .percent {
+            return Int64(Double(FileSizeFormatter.size(of: url)) * min(targetValue, 100) / 100)
+        }
         return Int64(targetValue * targetUnit.multiplier)
     }
 
@@ -96,11 +101,11 @@ struct CompressToolView: View {
                             .multilineTextAlignment(.trailing)
                             .frame(width: 96)
                         SegmentedPicker(selection: $targetUnit, options: SizeUnit.allCases.map { ($0, $0.rawValue) })
-                        Text("per file")
+                        Text(targetUnit == .percent ? "of the original" : "per file")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
-                    FormHint("Images use a quality search and downscale if needed. Videos and audio pick a bitrate from the duration (FFmpeg required).")
+                    FormHint("Images use a quality search and downscale if needed. PDFs shrink their images step by step and keep text, links, comments and form fields; if the target is out of reach, the smallest version is saved. Videos and audio pick a bitrate from the duration (FFmpeg required).")
                 }
             }
             .padding(16)
@@ -116,9 +121,9 @@ struct CompressToolView: View {
 
     private func run() {
         let preset = settings.compressionPreset
-        let target = perFileTarget
         let resize = resize
         for url in session.files {
+            let target = target(for: url)
             let format = Compressor.outputFormat(for: url)
             let base = ConversionMatrix.strippedBaseName(url.lastPathComponent)
             let destination = ConversionMatrix.uniqueURL(directory: settings.outputLocation.directory(for: url), baseName: base, suffix: "compressed", ext: format.fileExtension)

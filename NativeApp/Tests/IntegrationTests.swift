@@ -69,13 +69,52 @@ import PDFKit
         let bad = root.appendingPathComponent("bad.png")
         try Data("not an image".utf8).write(to: bad)
         do { _ = try ImageIOBridge.load(bad); fatalError("Malformed image accepted") } catch { }
+        // Nachbau Phase 3: Archive mit Schutzprüfung
+        let pack = root.appendingPathComponent("pack")
+        try fm.createDirectory(at: pack.appendingPathComponent("inner"), withIntermediateDirectories: true)
+        try Data("eins".utf8).write(to: pack.appendingPathComponent("eins.txt"))
+        try Data("zwei".utf8).write(to: pack.appendingPathComponent("inner/zwei.txt"))
         let archive = root.appendingPathComponent("archive.zip")
-        do {
-            try await Engines.convert(ConversionRequest(source: archive, sourceFormat: .zip, target: .tar, destination: root.appendingPathComponent("archive.tar"), progress: { _ in }))
-            fatalError("Unsafe archive conversion enabled")
-        } catch { }
+        try await ZipTool.zip(directory: pack, to: archive)
+        let archiveBytes = try Data(contentsOf: archive)
+        for target: FileFormat in [.tar, .gz] {
+            let out = try await Engines.convert(ConversionRequest(source: archive, sourceFormat: .zip, target: target, destination: root.appendingPathComponent("archive.\(target.fileExtension)"), progress: { _ in }))
+            let check = root.appendingPathComponent("check-\(target.rawValue)")
+            try fm.createDirectory(at: check, withIntermediateDirectories: true)
+            try await ArchiveEngine.extract(out, format: target, into: check)
+            precondition(try! String(contentsOf: check.appendingPathComponent("inner/zwei.txt"), encoding: .utf8) == "zwei", "\(target) round trip")
+        }
+        precondition(try! Data(contentsOf: archive) == archiveBytes, "Archive original changed")
+        // Entpacken neben das Original, Namensregel "name 2"
+        let first = try await ArchiveEngine.extractNextToOriginal(archive)
+        let second = try await ArchiveEngine.extractNextToOriginal(archive)
+        precondition(first.lastPathComponent == "archive" && second.lastPathComponent == "archive 2", "got \(first.lastPathComponent), \(second.lastPathComponent)")
+        precondition(fm.fileExists(atPath: first.appendingPathComponent("inner/zwei.txt").path))
+        precondition(try! fm.contentsOfDirectory(atPath: root.path).allSatisfy { !$0.hasPrefix(".opentangerine-") }, "Staging left behind")
+        // ZIP aus mehreren Dateien
+        let zipped = try await ArchiveEngine.zip([pack.appendingPathComponent("eins.txt"), pack.appendingPathComponent("inner")])
+        precondition(zipped.lastPathComponent == "Archive.zip")
+        // Böse Archive: ".."-Pfad und Verknüpfung nach außen werden abgelehnt, nichts wird geschrieben
+        let evil = root.appendingPathComponent("evil")
+        try fm.createDirectory(at: evil, withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: evil.appendingPathComponent("a.txt"))
+        try fm.createSymbolicLink(atPath: evil.appendingPathComponent("link").path, withDestinationPath: "/etc/hosts")
+        let traversal = root.appendingPathComponent("traversal.tar")
+        let linkTar = root.appendingPathComponent("link.tar")
+        _ = try await Shell.run("/usr/bin/tar", ["-cf", traversal.path, "-s", ",^a.txt,../../a.txt,", "a.txt"], currentDirectory: evil)
+        _ = try await Shell.run("/usr/bin/tar", ["-cf", linkTar.path, "link"], currentDirectory: evil)
+        for bad in [traversal, linkTar] {
+            let target = root.appendingPathComponent("unpack-\(bad.deletingPathExtension().lastPathComponent)")
+            try fm.createDirectory(at: target, withIntermediateDirectories: true)
+            do {
+                try await ArchiveEngine.extract(bad, format: .tar, into: target)
+                fatalError("Unsafe archive extracted: \(bad.lastPathComponent)")
+            } catch OpenTangerineError.invalidInput { }
+            precondition(try! fm.contentsOfDirectory(atPath: target.path).isEmpty, "Something was written for \(bad.lastPathComponent)")
+        }
+        precondition(ArchiveEngine.isSafe("a/b/../c") && !ArchiveEngine.isSafe("a/../../c") && !ArchiveEngine.isSafe("/etc/x"))
         let result = try await Shell.run("/usr/bin/printf", ["%s", "a;$(echo unsafe)"])
         guard result.stdout == "a;$(echo unsafe)" else { fatalError("Arguments interpolated") }
-        print("PASS collision protection, original preservation, malformed input, archive guard, literal process arguments")
+        print("PASS collision protection, original preservation, malformed input, archive round trip, safe extraction, traversal and link rejection, literal process arguments")
     }
 }

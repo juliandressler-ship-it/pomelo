@@ -196,6 +196,12 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    /// Tastenkombination für die Finder-Auswahl.
+    @Published var finderShortcut: FinderShortcut { didSet { defaults.set(finderShortcut.rawValue, forKey: "finderShortcut") } }
+
+    /// App für die Aktion "Terminal".
+    @Published var terminalAppPath: String { didSet { defaults.set(terminalAppPath, forKey: "terminalAppPath") } }
+
     @Published var soundEnabled: Bool { didSet { defaults.set(soundEnabled, forKey: "soundEnabled") } }
     @Published var hapticsEnabled: Bool { didSet { defaults.set(hapticsEnabled, forKey: "hapticsEnabled") } }
     /// Ergebnisse auf dem Schreibtisch nicht zusätzlich in einem Finder-Fenster zeigen.
@@ -232,6 +238,8 @@ final class AppSettings: ObservableObject {
         convertKey = keys[0]
         toolsKey = keys[1]
         actionsKey = keys[2]
+        terminalAppPath = defaults.string(forKey: "terminalAppPath") ?? "/System/Applications/Utilities/Terminal.app"
+        finderShortcut = FinderShortcut(rawValue: defaults.string(forKey: "finderShortcut") ?? "") ?? .controlOptionSpace
         soundEnabled = defaults.object(forKey: "soundEnabled") as? Bool ?? true
         hapticsEnabled = defaults.object(forKey: "hapticsEnabled") as? Bool ?? true
         skipRevealOnDesktop = defaults.object(forKey: "skipRevealOnDesktop") as? Bool ?? true

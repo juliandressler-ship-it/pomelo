@@ -66,5 +66,17 @@ import ImageIO
         precondition(mixed[0].outputs.count == 1 && mixed[3].outputs.count == 1)
         runner.dismissAll()
         print("PASS mixed formats share targets; corrupt/unknown files fail individually without blocking later files")
+        // Nachbau Phase 3: Verschieben überschreibt nie
+        let moveSource = root.appendingPathComponent("move-src")
+        let moveTarget = root.appendingPathComponent("move-dst")
+        try fm.createDirectory(at: moveSource, withIntermediateDirectories: true)
+        try fm.createDirectory(at: moveTarget, withIntermediateDirectories: true)
+        try Data("neu".utf8).write(to: moveSource.appendingPathComponent("note.txt"))
+        try Data("alt".utf8).write(to: moveTarget.appendingPathComponent("note.txt"))
+        let moved = try FileAction.moveFiles([moveSource.appendingPathComponent("note.txt")], to: moveTarget)
+        precondition(moved.first?.lastPathComponent == "note 2.txt", "got \(moved.first?.lastPathComponent ?? "-")")
+        precondition(try! String(contentsOf: moveTarget.appendingPathComponent("note.txt"), encoding: .utf8) == "alt", "Existing file overwritten")
+        precondition(!fm.fileExists(atPath: moveSource.appendingPathComponent("note.txt").path))
+        print("PASS move keeps existing files and uses the name 2 rule")
     }
 }

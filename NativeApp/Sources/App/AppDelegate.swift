@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
@@ -7,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let radial = RadialController()
     private var settingsWindow: NSWindow?
     private var welcomeWindow: NSWindow?
+    private var shortcutSubscription: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         DiagnosticLog.start()
@@ -21,6 +23,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         dragMonitor.delegate = radial
         dragMonitor.start()
+        FinderHotKey.shared.action = { [weak self] in self?.finderShortcutPressed() }
+        shortcutSubscription = AppSettings.shared.$finderShortcut.sink { FinderHotKey.shared.register($0) }
         // Beim ersten Start einmal das Willkommensfenster zeigen; später bleibt die App still in der Menüleiste.
         if !UserDefaults.standard.bool(forKey: "hasSeenWelcome") {
             UserDefaults.standard.set(true, forKey: "hasSeenWelcome")
@@ -113,6 +117,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Tastenkombination gedrückt: Rad für die markierten Finder-Dateien öffnen.
+    @MainActor
+    private func finderShortcutPressed() {
+        guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.finder" else {
+            NSSound.beep()
+            return
+        }
+        switch FinderSelection.files() {
+        case .success(let urls) where !urls.isEmpty:
+            radial.presentPicker(for: urls)
+            radial.highlight(0)
+        case .success:
+            NSSound.beep()
+        case .failure(.notAllowed):
+            FileAction.alert("Open Tangerine may not read the Finder selection",
+                             "Allow it in System Settings → Privacy & Security → Automation → Open Tangerine → Finder.")
+        case .failure(.other(let message)):
+            FileAction.alert("Could not read the Finder selection", message)
+        }
     }
 
     @MainActor

@@ -48,6 +48,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <key>LSMinimumSystemVersion</key><string>15.0</string>
 <key>LSUIElement</key><true/>
 <key>NSHighResolutionCapable</key><true/>
+<key>NSAppleEventsUsageDescription</key><string>Open Tangerine reads the files you selected in Finder when you press the Finder shortcut. It does not change anything in Finder.</string>
 </dict></plist>
 PLIST
 mkdir -p "$app/Contents/Resources"

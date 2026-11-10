@@ -56,6 +56,30 @@ import PDFKit
         let pagesFolder2 = try await Engines.convert(ConversionRequest(source: merged, sourceFormat: .pdf, target: .jpg, destination: url("merged.jpg"), progress: { _ in }))
         precondition(pagesFolder2.lastPathComponent == "merged JPG pages 2")
         print("PASS PDF multi-page -> JPG folder name and collision")
+        // Nachbau Phase 3: PDF komprimieren behält Formularfelder; PDF/A wird erzeugt
+        let form = URL(fileURLWithPath: fm.currentDirectoryPath).appendingPathComponent("NativeApp/Tests/Fixtures/editable-form.pdf")
+        func widgets(_ doc: PDFDocument) -> Int { (0..<doc.pageCount).reduce(0) { $0 + (doc.page(at: $1)?.annotations.count ?? 0) } }
+        let formWidgets = widgets(try! PDFOps.document(form))
+        precondition(formWidgets > 0, "Fixture has no form fields")
+        for (name, strong, target) in [("balanced", false, Int64?.none), ("strong", true, nil), ("target", false, Int64(1_000))] {
+            let out = url("form-\(name).pdf")
+            let size = try PDFOps.compress(form, strong: strong, targetBytes: target, to: out)
+            precondition(size == FileSizeFormatter.size(of: out))
+            precondition(widgets(try! PDFOps.document(out)) == formWidgets, "\(name) lost form fields")
+        }
+        precondition(try! fm.contentsOfDirectory(atPath: root.path).allSatisfy { !$0.hasPrefix(".opentangerine-") }, "PDF temp files left behind")
+        let imageHeavy = url("photos.pdf")
+        try PDFOps.fromImages([url("text.png"), url("text.jpg")], to: imageHeavy, progress: { _ in })
+        let small = try PDFOps.compress(imageHeavy, strong: false, targetBytes: FileSizeFormatter.size(of: imageHeavy) / 2, to: url("photos-small.pdf"))
+        precondition(small < FileSizeFormatter.size(of: imageHeavy), "Target compression did not shrink")
+        let pdfa = url("merged PDF-A.pdf")
+        try PDFOps.makePDFA(merged, to: pdfa)
+        let pdfaDoc = try PDFOps.document(pdfa)
+        precondition(pdfaDoc.pageCount == 2 && pdfaDoc.page(at: 1)!.string!.contains("Second page"), "PDF/A lost pages or text")
+        let pdfaBytes = try Data(contentsOf: pdfa)
+        // macOS schreibt einen PDF/A-OutputIntent und XMP mit pdfaid:part 2 / conformance B (komprimiert)
+        precondition(pdfaBytes.range(of: Data("/GTS_PDFA1".utf8)) != nil && pdfaBytes.range(of: Data("/Metadata".utf8)) != nil, "PDF/A identification missing")
+        print("PASS PDF compression keeps \(formWidgets) form fields, target size shrinks, PDF/A-2 written with text")
         let reordered = try PDFOps.document(url("reordered.pdf"))
         precondition(reordered.page(at: 0)!.rotation == 90 && reordered.page(at: 0)!.string!.contains("Second page"))
         for strong in [false, true] {

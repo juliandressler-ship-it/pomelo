@@ -18,7 +18,7 @@ struct RadialItem: Identifiable, Hashable {
     init(fileAction: FileAction) {
         action = .fileAction(fileAction)
         label = fileAction.rawValue
-        detail = fileAction.rawValue
+        detail = fileAction.detail
         symbol = fileAction.symbol
     }
 
@@ -336,6 +336,8 @@ final class RadialView: NSView {
     var advancedMode = false { didSet { refresh() } }
     /// Taste, mit der das Rad geöffnet wurde (nil, wenn über das Menü geöffnet).
     var modeKey: DragKey? { didSet { refresh() } }
+    /// Text in der Mitte, solange nichts gewählt ist.
+    var idleTitle = "Convert" { didSet { refresh() } }
 
     private(set) var highlighted: Int? {
         didSet {
@@ -397,7 +399,7 @@ final class RadialView: NSView {
             title = items[highlighted].label
             caption = items[highlighted].detail
         } else {
-            title = items.count == 1 ? items[0].label : (advancedMode ? "Tools" : "Convert")
+            title = items.count == 1 ? items[0].label : idleTitle
             caption = subtitle
         }
         host.rootView = RadialWheelView(

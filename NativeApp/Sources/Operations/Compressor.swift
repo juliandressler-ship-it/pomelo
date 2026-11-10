@@ -12,7 +12,7 @@ enum Compressor {
         case .audio:
             try await compressAudio(url, format: format, preset: preset, targetBytes: targetBytes, to: destination, progress: progress)
         case .document where format == .pdf:
-            try PDFOps.compress(url, strong: preset == .strong, to: destination)
+            try PDFOps.compress(url, strong: preset == .strong, targetBytes: targetBytes, to: destination)
             progress(1)
         default:
             throw OpenTangerineError.invalidInput("\(format.displayName) files can't be compressed. Convert to ZIP instead.")

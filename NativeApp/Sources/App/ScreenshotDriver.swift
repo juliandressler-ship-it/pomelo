@@ -103,6 +103,11 @@ enum ScreenshotDriver {
             try await Task.sleep(nanoseconds: 1_000_000_000)
             try await screencapture(["-x", "-o", "-l", "\(radial.panelWindowNumber ?? 0)", directory.appendingPathComponent("radial-tools\(suffix).png").path])
             radial.hide()
+            radial.presentPicker(for: [photo], actions: true)
+            radial.highlight(1)
+            try await Task.sleep(nanoseconds: 1_000_000_000)
+            try await screencapture(["-x", "-o", "-l", "\(radial.panelWindowNumber ?? 0)", directory.appendingPathComponent("radial-actions\(suffix).png").path])
+            radial.hide()
         }
 
         if let files = inputs[.compress] {

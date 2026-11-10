@@ -158,6 +158,7 @@ final class RadialController: DragMonitorDelegate {
         guard let view = panel?.radialView else { return }
         view.advancedMode = advanced
         view.modeKey = modeKey
+        view.idleTitle = actions ? "Actions" : advanced ? "Tools" : "Convert"
         let count = urls.count
         if count == 0 {
             view.items = []
@@ -167,7 +168,7 @@ final class RadialController: DragMonitorDelegate {
         }
         view.subtitle = count == 1 ? urls[0].lastPathComponent : "\(count) files"
         if actions {
-            view.items = FileAction.allCases.map(RadialItem.init(fileAction:))
+            view.items = FileAction.wheel.map(RadialItem.init(fileAction:))
             view.emptyMessage = "No file actions"
             return
         }
@@ -180,8 +181,13 @@ final class RadialController: DragMonitorDelegate {
             view.items = ToolID.available(for: formats).map(RadialItem.init(tool:))
             view.emptyMessage = "No tools for this selection"
         } else {
-            let pdfTools: [ToolID] = formats.allSatisfy { $0 == .pdf } ? [.annotatePDF, .mergePDF, .organizePDF, .splitPDF] : []
-            view.items = pdfTools.filter { $0.applies(to: formats) }.map(RadialItem.init(tool:)) + ConversionMatrix.targets(for: formats).map(RadialItem.init(format:))
+            let allPDF = formats.allSatisfy { $0 == .pdf }
+            let pdfTools: [ToolID] = allPDF ? [.annotatePDF, .mergePDF, .organizePDF, .splitPDF] : []
+            // Archive: zuerst "Extract"; PDFs: "PDF/A" als eigenes Ziel
+            let extras: [FileAction] = formats.allSatisfy { $0.category == .archive } ? [.extract] : allPDF ? [.pdfa] : []
+            view.items = extras.map(RadialItem.init(fileAction:))
+                + pdfTools.filter { $0.applies(to: formats) }.map(RadialItem.init(tool:))
+                + ConversionMatrix.targets(for: formats).map(RadialItem.init(format:))
             view.emptyMessage = count > 1 ? "No shared conversion for these files" : "No conversions available"
         }
     }

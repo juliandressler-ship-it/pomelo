@@ -122,6 +122,27 @@ struct SettingsView: View {
             Text("Move the app to Applications before you turn this on.")
         }
         Section {
+            LabeledContent("Terminal app") {
+                HStack(spacing: 8) {
+                    Image(nsImage: NSWorkspace.shared.icon(forFile: settings.terminalAppPath))
+                        .resizable().frame(width: 16, height: 16)
+                    Text(FileManager.default.displayName(atPath: settings.terminalAppPath).replacingOccurrences(of: ".app", with: ""))
+                    Button("Choose…", action: chooseTerminal)
+                }
+            }
+            LabeledContent("Finder shortcut") {
+                Picker("Finder shortcut", selection: $settings.finderShortcut) {
+                    ForEach(FinderShortcut.allCases) { Text($0.title).tag($0) }
+                }
+                .labelsHidden()
+                .fixedSize()
+            }
+        } header: {
+            Text("Actions")
+        } footer: {
+            Text("Select files in Finder and press the shortcut to open the conversion wheel. Use the arrow keys, Return to choose, Escape to close. The first time, macOS asks whether Open Tangerine may read the Finder selection.")
+        }
+        Section {
             ForEach(settings.excludedApplications.keys.sorted(), id: \.self) { identifier in
                 HStack {
                     Text(settings.excludedApplications[identifier] ?? identifier)
@@ -139,6 +160,18 @@ struct SettingsView: View {
             Text("Apps without drag shortcuts")
         } footer: {
             Text("Drags that start in these apps never open a wheel. Convert Files in the menu bar still works.")
+        }
+    }
+
+    private func chooseTerminal() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose a terminal app"
+        panel.allowedContentTypes = [.applicationBundle]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.canChooseDirectories = false
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            settings.terminalAppPath = url.path
         }
     }
 

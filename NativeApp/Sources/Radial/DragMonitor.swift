@@ -180,7 +180,7 @@ final class DragMonitor {
             // Keep missing files in the selection so conversion reports a per-file error.
             // Filtering them here silently converted only part of a batch.
             _ = FileManager.default.fileExists(atPath: resolved.path, isDirectory: &isDirectory)
-            guard !isDirectory.boolValue || FileFormat.detect(resolved)?.isPackage == true else { return nil }
+            // Ordner bleiben in der Auswahl: das Aktionsrad (AirDrop, ZIP, Kopieren …) gilt auch für sie, wie im Original.
             return resolved.standardizedFileURL
         }
     }

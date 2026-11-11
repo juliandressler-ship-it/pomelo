@@ -137,10 +137,14 @@ struct SettingsView: View {
                 .labelsHidden()
                 .fixedSize()
             }
+            if FinderHotKey.shared.registrationFailed {
+                Label("Another app already uses this shortcut. Choose a different one.", systemImage: "exclamationmark.triangle")
+                    .font(.callout).foregroundStyle(.orange)
+            }
         } header: {
             Text("Actions")
         } footer: {
-            Text("Select files in Finder and press the shortcut to open the conversion wheel. Use the arrow keys, Return to choose, Escape to close. The first time, macOS asks whether Open Tangerine may read the Finder selection.")
+            Text("Select files in Finder and press the shortcut to open the conversion wheel. Use the arrow keys, Return to choose, Escape to close; Command and Control switch to the tools and action wheels. The first time, macOS asks whether Open Tangerine may read the Finder selection.")
         }
         Section {
             ForEach(settings.excludedApplications.keys.sorted(), id: \.self) { identifier in

@@ -45,6 +45,7 @@ final class FinderHotKey {
         if handler == nil {
             var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
             InstallEventHandler(GetApplicationEventTarget(), { _, _, _ in
+                DiagnosticLog.log("finder shortcut pressed")
                 DispatchQueue.main.async { MainActor.assumeIsolated { FinderHotKey.shared.action?() } }
                 return noErr
             }, 1, &spec, nil, &handler)
@@ -52,6 +53,7 @@ final class FinderHotKey {
         let id = EventHotKeyID(signature: OSType(0x4F_54_4B_59), id: 1) // "OTKY"
         let status = RegisterEventHotKey(carbon.code, carbon.modifiers, id, GetApplicationEventTarget(), 0, &hotKey)
         registrationFailed = status != noErr
+        DiagnosticLog.log("finder shortcut \(shortcut.rawValue) registered, status \(status)")
     }
 }
 
@@ -80,8 +82,8 @@ enum FinderSelection {
             return .failure(.other(error[NSAppleScript.errorMessage] as? String ?? "Finder did not answer"))
         }
         let paths = (result.stringValue ?? "").split(separator: "\n").map(String.init)
-        // Ordner öffnen kein Rad, wie beim Ziehen
-        let urls = paths.map { URL(fileURLWithPath: $0) }.filter { !$0.hasDirectoryPath || FileFormat.detect($0)?.isPackage == true }
+        // Ordner bleiben drin: dafür gibt es das Aktionsrad
+        let urls = paths.map { URL(fileURLWithPath: $0) }
         return .success(urls)
     }
 }

@@ -115,5 +115,60 @@ final class UpdateResponse: URLProtocol {
         precondition(!JobRunner.onlyOnDesktop([desktop.appendingPathComponent("a.png")], settings: keys))
         keys.skipRevealOnDesktop = previousSkip
         print("PASS configurable wheel keys without duplicates, Option+Shift fallback, desktop reveal rule")
+
+        // Kontrolle: Tastatursteuerung im Rad wie im Original (Pfeile, Enter, Escape, Command/Control wechseln)
+        let quiet = (keys.soundEnabled, keys.hapticsEnabled)
+        keys.soundEnabled = false; keys.hapticsEnabled = false
+        let wheelView = RadialView(frame: NSRect(x: 0, y: 0, width: 400, height: 400))
+        wheelView.items = [FileFormat.jpg, .png, .webp, .heic].map(RadialItem.init(format:))
+        wheelView.interactive = true
+        var chosen: RadialItem?
+        var cancelled = false
+        var switched: [AppSettings.Wheel] = []
+        wheelView.onSelect = { chosen = $0 }
+        wheelView.onCancel = { cancelled = true }
+        wheelView.onWheelChange = { switched.append($0) }
+        func press(_ code: UInt16, _ chars: String = "") {
+            let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
+                                         characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code)!
+            wheelView.keyDown(with: event)
+        }
+        func modifiers(_ flags: NSEvent.ModifierFlags, _ code: UInt16) {
+            let event = NSEvent.keyEvent(with: .flagsChanged, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: 0, context: nil,
+                                         characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: code)!
+            wheelView.flagsChanged(with: event)
+        }
+        press(125)            // Pfeil runter -> erstes Segment
+        precondition(wheelView.highlighted == 0, "arrow selects first")
+        press(124); press(124) // Pfeil rechts zweimal
+        precondition(wheelView.highlighted == 2, "arrows move forward")
+        press(123)            // Pfeil links
+        precondition(wheelView.highlighted == 1, "arrows move back")
+        press(126); press(126) // hoch zweimal: von 1 über 0 auf das letzte
+        precondition(wheelView.highlighted == 3, "wraps around")
+        press(36, "\r")       // Enter
+        precondition(chosen?.label == "HEIC", "Return chooses highlighted: \(String(describing: chosen?.label))")
+        press(53)             // Escape
+        precondition(cancelled, "Escape cancels")
+        modifiers([.command], 55); modifiers([.control], 59); modifiers([.shift], 56); modifiers([], 56)
+        precondition(switched == [.tools, .actions, .convert], "Command/Control/Shift switch wheels: \(switched)")
+        wheelView.interactive = false
+        modifiers([.command], 55)
+        precondition(switched.count == 3, "no switching while dragging")
+        keys.soundEnabled = quiet.0; keys.hapticsEnabled = quiet.1
+        // Ordner bleiben in der Zieh-Auswahl (für das Aktionsrad)
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("ot-folder-\(UUID())")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let board = NSPasteboard(name: NSPasteboard.Name("ot-test-\(UUID())"))
+        board.clearContents(); board.writeObjects([folder as NSURL])
+        precondition(DragMonitor.fileURLs(on: board).map(\.lastPathComponent) == [folder.lastPathComponent], "folder kept for file actions")
+        board.releaseGlobally()
+        do { _ = try FileAction.hashReport([folder]); fatalError("hash of folder") } catch OpenTangerineError.invalidInput(let message) { precondition(message.contains("folder")) }
+        // Tastenkombination lässt sich registrieren und wieder abmelden
+        FinderHotKey.shared.register(.controlOptionT)
+        precondition(!FinderHotKey.shared.registrationFailed, "hot key registration")
+        FinderHotKey.shared.register(.off)
+        print("PASS wheel keyboard: arrows, wrap, Return, Escape, Command/Control/Shift switch wheels; folders kept for actions; hot key registers")
     }
 }

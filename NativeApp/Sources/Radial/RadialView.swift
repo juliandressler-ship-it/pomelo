@@ -332,6 +332,8 @@ final class RadialView: NSView {
     var onCancel: (() -> Void)?
     var onDragEntered: ((NSDraggingInfo) -> Void)?
     var onDragSessionEnded: (() -> Void)?
+    /// Menü-Modus: Radtaste gedrückt (z.B. Command) -> anderes Rad zeigen, wie im Original.
+    var onWheelChange: ((AppSettings.Wheel) -> Void)?
     var interactive = false
     var advancedMode = false { didSet { refresh() } }
     /// Taste, mit der das Rad geöffnet wurde (nil, wenn über das Menü geöffnet).
@@ -479,6 +481,15 @@ final class RadialView: NSView {
             onSelect?(items[highlighted])
         } else {
             onCancel?()
+        }
+    }
+
+    override func flagsChanged(with event: NSEvent) {
+        guard interactive else { return super.flagsChanged(with: event) }
+        let settings = AppSettings.shared
+        for wheel in [AppSettings.Wheel.actions, .tools, .convert] where event.modifierFlags.contains(settings.key(for: wheel).flag) {
+            onWheelChange?(wheel)
+            return
         }
     }
 

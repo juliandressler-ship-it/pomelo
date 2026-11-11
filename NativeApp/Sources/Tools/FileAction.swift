@@ -61,7 +61,9 @@ enum FileAction: String, CaseIterable, Hashable {
     static func hashReport(_ urls: [URL]) throws -> String {
         try urls.map { url in
             let values = try url.resourceValues(forKeys: [.isRegularFileKey])
-            guard values.isRegularFile == true else { throw OpenTangerineError.unreadable(url) }
+            guard values.isRegularFile == true else {
+                throw OpenTangerineError.invalidInput("\(url.lastPathComponent) is a folder. SHA-256 works with files only.")
+            }
             let file = try FileHandle(forReadingFrom: url)
             defer { try? file.close() }
             var hash = SHA256()

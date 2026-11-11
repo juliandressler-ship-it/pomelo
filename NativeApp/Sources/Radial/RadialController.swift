@@ -106,6 +106,7 @@ final class RadialController: DragMonitorDelegate {
         view.onCancel = { [weak self] in self?.hide() }
         view.onDragEntered = { [weak self] info in self?.adoptDraggedFiles(from: info) }
         view.onDragSessionEnded = { [weak self] in self?.dragSessionEnded() }
+        view.onWheelChange = { [weak self] wheel in self?.switchWheel(wheel) }
         view.clearHighlight()
         reloadItems()
         view.animatePresentation()
@@ -154,6 +155,21 @@ final class RadialController: DragMonitorDelegate {
         return settings.key(for: actions ? .actions : advanced ? .tools : .convert)
     }
 
+    /// Im Menü-Modus zwischen Konvertieren, Werkzeugen und Aktionen wechseln.
+    func switchWheel(_ wheel: AppSettings.Wheel) {
+        let newActions = wheel == .actions, newAdvanced = wheel == .tools
+        guard newActions != actions || newAdvanced != advanced, let view = panel?.radialView else { return }
+        actions = newActions
+        advanced = newAdvanced
+        view.clearHighlight()
+        reloadItems()
+        if !view.items.isEmpty { view.highlight(0) } // löst Ton/Haptik über die Hervorhebung aus
+    }
+
+    /// Nur für Tests: aktueller Zustand des Rads.
+    var currentWheel: AppSettings.Wheel { actions ? .actions : advanced ? .tools : .convert }
+    var currentItems: [RadialItem] { panel?.radialView.items ?? [] }
+
     private func reloadItems() {
         guard let view = panel?.radialView else { return }
         view.advancedMode = advanced
@@ -174,7 +190,9 @@ final class RadialController: DragMonitorDelegate {
         }
         if formats.count != urls.count {
             view.items = []
-            view.emptyMessage = "Selection includes unsupported files"
+            let folders = urls.contains { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true && FileFormat.detect($0)?.isPackage != true }
+            view.emptyMessage = folders ? "Folders work with file actions" : "Selection includes unsupported files"
+            if folders { view.subtitle = "Hold \(AppSettings.shared.key(for: .actions).title) for AirDrop, ZIP, Move and more" }
             return
         }
         if advanced {

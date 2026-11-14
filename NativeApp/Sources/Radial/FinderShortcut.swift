@@ -61,6 +61,23 @@ final class FinderHotKey {
 enum FinderSelection {
     enum Failure: Error { case notAllowed, other(String) }
 
+    /// Erlaubnis für Apple Events an den Finder einholen, BEVOR das Skript läuft.
+    /// Läuft im Hintergrund und darf beliebig lange auf die Antwort im macOS-Dialog warten.
+    /// (Vorher lief das Skript direkt und brach mit "AppleEvent timed out" ab, solange der Dialog offen war.)
+    static func requestPermission() async -> Bool {
+        await Task.detached(priority: .userInitiated) {
+            let bundle = "com.apple.finder"
+            var target = AEAddressDesc()
+            let created = bundle.withCString { pointer in
+                AECreateDesc(DescType(typeApplicationBundleID), pointer, bundle.utf8.count, &target)
+            }
+            guard created == noErr else { return false }
+            defer { AEDisposeDesc(&target) }
+            let status = AEDeterminePermissionToAutomateTarget(&target, AEEventClass(typeWildCard), AEEventID(typeWildCard), true)
+            return status == noErr
+        }.value
+    }
+
     @MainActor static func files() -> Result<[URL], Failure> {
         let source = """
         tell application "Finder"
@@ -79,6 +96,8 @@ enum FinderSelection {
             let code = error[NSAppleScript.errorNumber] as? Int ?? 0
             // -1743: keine Erlaubnis, -1744: Nachfrage abgelehnt
             if code == -1743 || code == -1744 { return .failure(.notAllowed) }
+            // -1712: Zeitüberschreitung (z.B. Finder beschäftigt)
+            if code == -1712 { return .failure(.other("Finder did not answer in time. Please press the shortcut again.")) }
             return .failure(.other(error[NSAppleScript.errorMessage] as? String ?? "Finder did not answer"))
         }
         let paths = (result.stringValue ?? "").split(separator: "\n").map(String.init)

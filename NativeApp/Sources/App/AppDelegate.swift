@@ -128,6 +128,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             NSSound.beep()
             return
         }
+        // Erst die Erlaubnis (beim ersten Mal mit macOS-Dialog), dann die Auswahl lesen
+        Task { @MainActor [weak self] in
+            guard await FinderSelection.requestPermission() else {
+                FileAction.alert("Open Tangerine may not read the Finder selection",
+                                 "Allow it in System Settings → Privacy & Security → Automation → Open Tangerine → Finder.")
+                return
+            }
+            self?.showWheelForFinderSelection()
+        }
+    }
+
+    @MainActor
+    private func showWheelForFinderSelection() {
         switch FinderSelection.files() {
         case .success(let urls) where !urls.isEmpty:
             radial.presentPicker(for: urls)

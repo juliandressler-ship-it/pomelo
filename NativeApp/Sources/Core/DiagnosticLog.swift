@@ -5,7 +5,7 @@ enum DiagnosticLog {
     static let enabled = ProcessInfo.processInfo.environment["POMELO_DEBUG"] == "1"
     static let directory = FileManager.default.temporaryDirectory.appendingPathComponent("Pomelo-Diagnostics")
     static let logFile = directory.appendingPathComponent("debug.log")
-    private static let queue = DispatchQueue(label: "de.juliandressler.pomelo.log")
+    private static let queue = DispatchQueue(label: "app.pomelo.log")
     static func start() {}
     static func flush() {}
     static func log(_ message: @autoclosure () -> String, file: String = #fileID, line: Int = #line) {

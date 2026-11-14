@@ -43,7 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let button = item.button {
             button.image = BrandArtwork.image(size: 24, template: true)
             button.imageScaling = .scaleProportionallyDown
-            button.toolTip = "Open Tangerine: hold Shift while dragging a file"
+            button.toolTip = "Pomelo: hold Shift while dragging a file"
         }
         let menu = NSMenu()
         menu.addItem(withTitle: "Convert Files…", action: #selector(convertFiles), keyEquivalent: "o").target = self
@@ -52,16 +52,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
         menu.addItem(withTitle: "How It Works…", action: #selector(showWelcome), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "About Open Tangerine", action: #selector(about), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "About Pomelo", action: #selector(about), keyEquivalent: "").target = self
         if DiagnosticLog.enabled {
             menu.addItem(withTitle: "Show Logs", action: #selector(showLogs), keyEquivalent: "").target = self
         }
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit Open Tangerine", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        menu.addItem(withTitle: "Quit Pomelo", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let symbols = ["Convert Files…": "arrow.triangle.2.circlepath", "Open Tool for Files…": "wrench.and.screwdriver",
-                       "File Actions…": "doc.on.doc", "Settings…": "gearshape", "How It Works…": "questionmark.circle", "About Open Tangerine": "info.circle",
+                       "File Actions…": "doc.on.doc", "Settings…": "gearshape", "How It Works…": "questionmark.circle", "About Pomelo": "info.circle",
                        "Show Logs": "doc.text.magnifyingglass",
-                       "Quit Open Tangerine": "power"]
+                       "Quit Pomelo": "power"]
         for entry in menu.items {
             if let symbol = symbols[entry.title] {
                 entry.image = NSImage(systemSymbolName: symbol, accessibilityDescription: entry.title)
@@ -103,7 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let controller = NSHostingController(rootView: view)
         controller.sizingOptions = []
         let window = SettingsWindow(contentViewController: controller)
-        window.title = "Open Tangerine"
+        window.title = "Pomelo"
         window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
         window.toolbarStyle = .unified
         window.isReleasedWhenClosed = false
@@ -132,8 +132,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Erst die Erlaubnis (beim ersten Mal mit macOS-Dialog), dann die Auswahl lesen
         Task { @MainActor [weak self] in
             guard await FinderSelection.requestPermission() else {
-                FileAction.alert("Open Tangerine may not read the Finder selection",
-                                 "Allow it in System Settings → Privacy & Security → Automation → Open Tangerine → Finder.")
+                FileAction.alert("Pomelo may not read the Finder selection",
+                                 "Allow it in System Settings → Privacy & Security → Automation → Pomelo → Finder.")
                 return
             }
             self?.showWheelForFinderSelection()
@@ -151,8 +151,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .success:
             NSSound.beep()
         case .failure(.notAllowed):
-            FileAction.alert("Open Tangerine may not read the Finder selection",
-                             "Allow it in System Settings → Privacy & Security → Automation → Open Tangerine → Finder.")
+            FileAction.alert("Pomelo may not read the Finder selection",
+                             "Allow it in System Settings → Privacy & Security → Automation → Pomelo → Finder.")
         case .failure(.other(let message)):
             FileAction.alert("Could not read the Finder selection", message)
         }

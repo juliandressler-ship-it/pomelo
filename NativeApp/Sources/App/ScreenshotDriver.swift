@@ -15,10 +15,10 @@ private func dumpBacktrace(_ signal: Int32) {
 
 @MainActor
 enum ScreenshotDriver {
-    static var isEnabled: Bool { ProcessInfo.processInfo.environment["OPEN_TANGERINE_SCREENSHOTS"] != nil }
+    static var isEnabled: Bool { ProcessInfo.processInfo.environment["POMELO_SCREENSHOTS"] != nil }
 
     static func run(radial: RadialController) {
-        guard let directory = ProcessInfo.processInfo.environment["OPEN_TANGERINE_SCREENSHOTS"].map({ URL(fileURLWithPath: $0) }) else { return }
+        guard let directory = ProcessInfo.processInfo.environment["POMELO_SCREENSHOTS"].map({ URL(fileURLWithPath: $0) }) else { return }
         for sig in [SIGSEGV, SIGBUS, SIGABRT, SIGILL, SIGTRAP] { signal(sig, dumpBacktrace) }
         NSSetUncaughtExceptionHandler { exception in
             fputs("uncaught exception \(exception.name.rawValue): \(exception.reason ?? "")\n\(exception.callStackSymbols.joined(separator: "\n"))\n", stderr)
@@ -169,7 +169,7 @@ enum ScreenshotDriver {
             welcome.orderOut(nil)
         }
         NSApp.appearance = AppearanceMode.light.appearance
-        if ProcessInfo.processInfo.environment["OPEN_TANGERINE_SCREENSHOTS_SKIP_TOOLS"] != nil {
+        if ProcessInfo.processInfo.environment["POMELO_SCREENSHOTS_SKIP_TOOLS"] != nil {
             try? fm.removeItem(at: samples)
             return
         }

@@ -63,7 +63,7 @@ struct SettingsView: View {
                 HStack(spacing: 8) {
                     Image(nsImage: BrandArtwork.image(size: 40)).resizable().frame(width: 20, height: 20)
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("Open Tangerine").font(.system(size: 12, weight: .medium))
+                        Text("Pomelo").font(.system(size: 12, weight: .medium))
                         Text("\(version) · runs offline").font(.system(size: 11)).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 0)
@@ -144,7 +144,7 @@ struct SettingsView: View {
         } header: {
             Text("Actions")
         } footer: {
-            Text("Select files in Finder and press the shortcut to open the conversion wheel. Use the arrow keys, Return to choose, Escape to close; Command and Control switch to the tools and action wheels. The first time, macOS asks whether Open Tangerine may read the Finder selection.")
+            Text("Select files in Finder and press the shortcut to open the conversion wheel. Use the arrow keys, Return to choose, Escape to close; Command and Control switch to the tools and action wheels. The first time, macOS asks whether Pomelo may read the Finder selection.")
         }
         Section {
             ForEach(settings.excludedApplications.keys.sorted(), id: \.self) { identifier in
@@ -368,9 +368,9 @@ struct SettingsView: View {
             HStack(spacing: 16) {
                 Image(nsImage: BrandArtwork.image(size: 128))
                     .resizable().frame(width: 64, height: 64)
-                    .accessibilityLabel("Open Tangerine icon")
+                    .accessibilityLabel("Pomelo icon")
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Open Tangerine").font(.system(size: 20, weight: .medium))
+                    Text("Pomelo").font(.system(size: 20, weight: .medium))
                     Text("Version \(version) · Developer build").foregroundStyle(.secondary)
                     Text("Converts files on this Mac. No account, no network access.")
                         .font(.callout).foregroundStyle(.secondary)
@@ -386,19 +386,25 @@ struct SettingsView: View {
             LabeledContent("This version", value: "New design, logo, archives, PDF and image tools, offline only")
         }
         Section {
-            LabeledContent("Open Tangerine") {
-                Link("Sintax Error Private Limited", destination: URL(string: "https://github.com/sintaxerrorpvtltd/Open-Tangerine")!)
+            LabeledContent("License", value: "GPL-3.0-only, no warranty")
+            LabeledContent("Notices") {
+                Button("Licenses…", action: showLicenses)
             }
-            LabeledContent("Original author") {
-                Link("Hemaangg", destination: URL(string: "https://www.instagram.com/hemaangg/")!)
-            }
-            LabeledContent("Satsuma", value: "plyght (MIT)")
-        } header: {
-            Text("Based on")
         } footer: {
-            // GPL-3.0 §5a: veränderte Fassungen müssen das deutlich sagen, mit Datum.
-            Text("Modified version of Open Tangerine, changed by Julian Dressler in November 2026. Licensed under GPL-3.0-only; the source code stays open. Independent of Tangerine. Some features are experimental, so check important results.")
+            // GPL-3.0 §5d: rechtliche Hinweise müssen in der Oberfläche abrufbar sein.
+            // Die Urheberhinweise der Vorlagen stehen in den mitgelieferten Lizenzdateien.
+            Text("Free software: you may share and change it under the GPL. Some features are experimental, so check important results.")
         }
+    }
+
+    /// Öffnet den Ordner mit den mitgelieferten Lizenz- und Urheberhinweisen.
+    private func showLicenses() {
+        guard let resources = Bundle.main.resourceURL else { return }
+        let files = ["NOTICE.txt", "GPL-3.0.txt", "THIRD_PARTY_NOTICES.md", "Satsuma-MIT.txt"]
+            .map { resources.appendingPathComponent($0) }
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+        if files.isEmpty { return }
+        NSWorkspace.shared.activateFileViewerSelecting(files)
     }
 }
 

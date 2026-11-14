@@ -130,7 +130,7 @@ enum PDFOps {
         let properties: [String: Any] = [
             "Domains": ["Applications": true, "Printing": true],
             "FilterType": 1,
-            "Name": "Open Tangerine Compress",
+            "Name": "Pomelo Compress",
             "FilterData": ["ColorSettings": ["ImageSettings": [
                 "Compression Quality": step.quality,
                 "ImageCompression": "ImageJPEGCompress",
@@ -198,7 +198,7 @@ enum PDFOps {
         let source = try document(url)
         let temp = destination.deletingLastPathComponent().appendingPathComponent(".opentangerine-\(UUID().uuidString).pdf")
         defer { try? FileManager.default.removeItem(at: temp) }
-        var info: [CFString: Any] = [kCGPDFContextCreatePDFA: true, kCGPDFContextCreator: "Open Tangerine"]
+        var info: [CFString: Any] = [kCGPDFContextCreatePDFA: true, kCGPDFContextCreator: "Pomelo"]
         let attributes = source.documentAttributes ?? [:]
         if let title = attributes[PDFDocumentAttribute.titleAttribute] as? String { info[kCGPDFContextTitle] = title }
         if let author = attributes[PDFDocumentAttribute.authorAttribute] as? String { info[kCGPDFContextAuthor] = author }

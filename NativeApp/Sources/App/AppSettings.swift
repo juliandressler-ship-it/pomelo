@@ -214,7 +214,22 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    /// Einmalig: Einstellungen aus "Open Tangerine" (alte Kennung) übernehmen.
+    private static func migrateFromOpenTangerine(_ defaults: UserDefaults) {
+        guard !defaults.bool(forKey: "migratedFromOpenTangerine") else { return }
+        defaults.set(true, forKey: "migratedFromOpenTangerine")
+        let old = "com.syntaxerror.opentangerine" as CFString
+        let keys = ["excludedApplications", "compressionPreset", "compressionResizeLongEdge", "outputLocation", "revealInFinder",
+                    "notchSurface", "progressStyle", "notchDefaultV012", "ffmpegPath", "jpegQuality", "appearanceMode",
+                    "convertKey", "toolsKey", "actionsKey", "soundEnabled", "hapticsEnabled", "skipRevealOnDesktop",
+                    "terminalAppPath", "finderShortcut", "hasSeenWelcome"]
+        for key in keys where defaults.object(forKey: key) == nil {
+            if let value = CFPreferencesCopyAppValue(key as CFString, old) { defaults.set(value, forKey: key) }
+        }
+    }
+
     private init() {
+        Self.migrateFromOpenTangerine(UserDefaults.standard)
         excludedApplications = defaults.dictionary(forKey: "excludedApplications") as? [String: String] ?? [:]
         compressionPreset = CompressionPreset(rawValue: defaults.string(forKey: "compressionPreset") ?? "") ?? .balanced
         compressionResizeLongEdge = defaults.integer(forKey: "compressionResizeLongEdge")
@@ -261,7 +276,7 @@ final class AppSettings: ObservableObject {
         launchAtLogin = status == .enabled || status == .requiresApproval
         if !preserveError {
             loginMessage = status == .requiresApproval
-                ? "Allow Open Tangerine in System Settings → General → Login Items."
+                ? "Allow Pomelo in System Settings → General → Login Items."
                 : nil
         }
     }

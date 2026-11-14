@@ -74,6 +74,7 @@ enum FinderSelection {
             guard created == noErr else { return false }
             defer { AEDisposeDesc(&target) }
             let status = AEDeterminePermissionToAutomateTarget(&target, AEEventClass(typeWildCard), AEEventID(typeWildCard), true)
+            DiagnosticLog.log("finder automation permission status \(status)")
             return status == noErr
         }.value
     }

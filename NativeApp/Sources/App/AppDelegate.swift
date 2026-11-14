@@ -125,6 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @MainActor
     private func finderShortcutPressed() {
         guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.finder" else {
+            DiagnosticLog.log("finder shortcut ignored: frontmost is \(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "-")")
             NSSound.beep()
             return
         }
@@ -141,7 +142,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @MainActor
     private func showWheelForFinderSelection() {
-        switch FinderSelection.files() {
+        let selection = FinderSelection.files()
+        DiagnosticLog.log("finder selection: \(selection)")
+        switch selection {
         case .success(let urls) where !urls.isEmpty:
             radial.presentPicker(for: urls)
             radial.highlight(0)

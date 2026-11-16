@@ -38,6 +38,7 @@ You can release the key and keep dragging; the wheel stays open until you drop.
 - No network access, no account, no analytics, no update check.
 - Originals are never changed. A new file with an existing name becomes `name 2.ext`.
 - Files are written to a temporary name first and renamed when complete.
+- Archives are only unpacked, never run. The macOS "downloaded from the internet" mark stays on extracted files and is carried over to new archives, so Gatekeeper still checks their contents.
 
 ## Install from source
 

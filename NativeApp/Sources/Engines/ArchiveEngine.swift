@@ -25,6 +25,7 @@ struct ArchiveEngine: ConversionEngine {
         try await Self.extract(request.source, format: request.sourceFormat, into: work)
         request.progress(0.6)
         try await Self.pack(contentsOf: work, as: request.target, to: request.destination)
+        Quarantine.carry(from: [request.source], to: request.destination)
         request.progress(1)
     }
 
@@ -238,7 +239,52 @@ struct ArchiveEngine: ConversionEngine {
             }
             try await ZipTool.zip(directory: work, to: temp)
         }
+        Quarantine.carry(from: files, to: temp)
         try FileManager.default.moveItem(at: temp, to: destination)
         return destination
+    }
+}
+
+/// Die macOS-Markierung "aus dem Internet geladen" (com.apple.quarantine).
+/// Packt Pomelo markierte Dateien in ein neues Archiv, bekommt auch das Archiv die Markierung.
+/// So prüft macOS den Inhalt später wieder, egal womit das Archiv entpackt wird.
+enum Quarantine {
+    static let name = "com.apple.quarantine"
+    /// Nicht mehr als so viele Einträge in Ordnern durchsuchen.
+    static let scanLimit = 20_000
+
+    static func value(of url: URL) -> String? {
+        let size = getxattr(url.path, name, nil, 0, 0, XATTR_NOFOLLOW)
+        guard size > 0 else { return nil }
+        var buffer = [UInt8](repeating: 0, count: size)
+        let read = getxattr(url.path, name, &buffer, size, 0, XATTR_NOFOLLOW)
+        guard read > 0 else { return nil }
+        return String(decoding: buffer.prefix(read), as: UTF8.self)
+    }
+
+    /// Erste Markierung unter den Quellen (Ordner werden durchsucht).
+    static func firstValue(in sources: [URL]) -> String? {
+        var scanned = 0
+        for source in sources {
+            if let value = value(of: source) { return value }
+            guard let items = FileManager.default.enumerator(at: source, includingPropertiesForKeys: nil) else { continue }
+            for case let item as URL in items {
+                if let value = value(of: item) { return value }
+                scanned += 1
+                if scanned >= scanLimit { return nil }
+            }
+        }
+        return nil
+    }
+
+    /// Markierung der Quellen auf das neue Archiv übertragen. Fehler werden ignoriert:
+    /// Das Archiv ist trotzdem korrekt, nur ohne Markierung.
+    static func carry(from sources: [URL], to target: URL) {
+        guard value(of: target) == nil, let original = firstValue(in: sources) else { return }
+        // Das Feld "vom Nutzer schon geöffnet" (0x0040) nicht mitnehmen: Der neue Inhalt soll erneut geprüft werden.
+        var fields = original.split(separator: ";", omittingEmptySubsequences: false).map(String.init)
+        if let flags = UInt32(fields[0], radix: 16) { fields[0] = String(format: "%04x", flags & ~UInt32(0x40)) }
+        let value = fields.joined(separator: ";")
+        _ = value.withCString { setxattr(target.path, name, $0, strlen($0), 0, XATTR_NOFOLLOW) }
     }
 }

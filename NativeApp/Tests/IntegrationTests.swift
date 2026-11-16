@@ -94,6 +94,15 @@ import PDFKit
         // ZIP aus mehreren Dateien
         let zipped = try await ArchiveEngine.zip([pack.appendingPathComponent("eins.txt"), pack.appendingPathComponent("inner")])
         precondition(zipped.lastPathComponent == "Archive.zip")
+        // Markierung "aus dem Internet": unmarkierte Quellen -> keine Markierung; markierte -> Archiv markiert, ohne "schon geöffnet"
+        precondition(Quarantine.value(of: zipped) == nil, "Unmarked sources produced a marked archive")
+        let marked = pack.appendingPathComponent("inner/zwei.txt")
+        _ = "00c1;6af8c248;Safari;".withCString { setxattr(marked.path, Quarantine.name, $0, strlen($0), 0, 0) }
+        let markedZip = try await ArchiveEngine.zip([pack.appendingPathComponent("eins.txt"), pack.appendingPathComponent("inner")])
+        precondition(Quarantine.value(of: markedZip) == "0081;6af8c248;Safari;", "zip mark: \(Quarantine.value(of: markedZip) ?? "none")")
+        _ = "0081;6af8c248;Safari;".withCString { setxattr(archive.path, Quarantine.name, $0, strlen($0), 0, 0) }
+        let markedTar = try await Engines.convert(ConversionRequest(source: archive, sourceFormat: .zip, target: .tar, destination: root.appendingPathComponent("marked.tar"), progress: { _ in }))
+        precondition(Quarantine.value(of: markedTar) == "0081;6af8c248;Safari;", "tar mark: \(Quarantine.value(of: markedTar) ?? "none")")
         // Böse Archive: ".."-Pfad und Verknüpfung nach außen werden abgelehnt, nichts wird geschrieben
         let evil = root.appendingPathComponent("evil")
         try fm.createDirectory(at: evil, withIntermediateDirectories: true)
@@ -115,6 +124,6 @@ import PDFKit
         precondition(ArchiveEngine.isSafe("a/b/../c") && !ArchiveEngine.isSafe("a/../../c") && !ArchiveEngine.isSafe("/etc/x"))
         let result = try await Shell.run("/usr/bin/printf", ["%s", "a;$(echo unsafe)"])
         guard result.stdout == "a;$(echo unsafe)" else { fatalError("Arguments interpolated") }
-        print("PASS collision protection, original preservation, malformed input, archive round trip, safe extraction, traversal and link rejection, literal process arguments")
+        print("PASS collision protection, original preservation, malformed input, archive round trip, quarantine carry-over, safe extraction, traversal and link rejection, literal process arguments")
     }
 }

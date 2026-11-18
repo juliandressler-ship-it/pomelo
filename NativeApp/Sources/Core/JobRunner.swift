@@ -109,7 +109,8 @@ final class JobRunner: ObservableObject {
                 job.progress = 1
                 job.status = .done
                 DiagnosticLog.log("job done: \(job.detail) -> \(outputs.map(\.lastPathComponent))")
-                if AppSettings.shared.revealInFinder, !outputs.isEmpty, !JobRunner.onlyOnDesktop(outputs) {
+                // Ohne HUD (Tests) kein Finder-Fenster öffnen
+                if presentsHUD, AppSettings.shared.revealInFinder, !outputs.isEmpty, !JobRunner.onlyOnDesktop(outputs) {
                     NSWorkspace.shared.activateFileViewerSelecting(outputs)
                 }
             } catch is CancellationError {

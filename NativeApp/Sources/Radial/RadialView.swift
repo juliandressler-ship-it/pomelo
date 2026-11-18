@@ -16,8 +16,12 @@ struct RadialItem: Identifiable, Hashable {
     var id: RadialAction { action }
 
     init(fileAction: FileAction) {
+        self.init(fileAction: fileAction, label: fileAction.rawValue)
+    }
+
+    init(fileAction: FileAction, label: String) {
         action = .fileAction(fileAction)
-        label = fileAction.rawValue
+        self.label = label
         detail = fileAction.detail
         symbol = fileAction.symbol
     }
@@ -165,8 +169,11 @@ struct RadialWheelView: View {
     var emptyMessage: String
     var emptyDetail: String
     var geometry: RadialGeometry
+    var wheel: AppSettings.Wheel = .convert
+    @State private var settled = true
 
-    static let captionHeight: CGFloat = 52
+    /// Aktionszeile (40) plus Radleiste (34) unter dem Rad.
+    static let captionHeight: CGFloat = 52 + 34
 
     var body: some View {
         VStack(spacing: 0) {
@@ -182,13 +189,52 @@ struct RadialWheelView: View {
                 }
             }
             .frame(width: geometry.outerRadius * 2 + 40, height: geometry.outerRadius * 2 + 40)
+            // Radwechsel: kurz zurücknehmen und weich wieder einfedern, damit der Wechsel sichtbar ist
+            .scaleEffect(settled || reduceMotion ? 1 : 0.94)
+            .opacity(settled ? 1 : 0.4)
             if !items.isEmpty { captionLine }
+            wheelSwitcher
         }
         .frame(height: geometry.outerRadius * 2 + 40 + Self.captionHeight, alignment: .top)
         .scaleEffect(appeared || reduceMotion ? 1 : 0.86, anchor: UnitPoint(x: 0.5, y: 0.43))
         .opacity(appeared ? 1 : 0)
         .onAppear { animateIn() }
         .onChange(of: presentationID) { animateIn() }
+        .onChange(of: wheel) { settle() }
+    }
+
+    private func settle() {
+        settled = false
+        DispatchQueue.main.async {
+            withAnimation(reduceMotion ? .easeOut(duration: 0.1) : Theme.wheelSpring) { settled = true }
+        }
+    }
+
+    /// Leiste unter dem Rad: zeigt das aktive Rad und mit welcher Taste man zu den anderen kommt.
+    private var wheelSwitcher: some View {
+        let settings = AppSettings.shared
+        return HStack(spacing: 2) {
+            ForEach([AppSettings.Wheel.convert, .tools, .actions], id: \.self) { option in
+                let active = option == wheel
+                HStack(spacing: 5) {
+                    Keycap(key: settings.key(for: option), size: .small, highlighted: active)
+                    Text(option.title)
+                        .font(.system(size: 11.5, weight: active ? .semibold : .medium))
+                        .foregroundStyle(active ? Color.primary : Color.secondary)
+                }
+                .padding(.leading, 4)
+                .padding(.trailing, 9)
+                .frame(height: 26)
+                .background(active ? Theme.pill : Color.clear, in: Capsule())
+                .animation(Theme.ease, value: wheel)
+            }
+        }
+        .padding(3)
+        .glassSurface(in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08), lineWidth: 1))
+        .padding(.top, 6)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(wheel.title) wheel")
     }
 
     private func animateIn() {
@@ -282,7 +328,6 @@ struct RadialWheelView: View {
     /// Zeile unter dem Rad: Taste und Aktion, z.B. "⇧  Convert to PNG".
     private var captionLine: some View {
         HStack(spacing: 8) {
-            if let modeKey { Keycap(key: modeKey, size: .small) }
             Text(caption)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(highlighted == nil ? Color.secondary : Color.primary)
@@ -290,8 +335,7 @@ struct RadialWheelView: View {
                 .truncationMode(.middle)
                 .contentTransition(.opacity)
         }
-        .padding(.leading, modeKey == nil ? 14 : 8)
-        .padding(.trailing, 14)
+        .padding(.horizontal, 14)
         .frame(height: 32)
         .frame(maxWidth: geometry.outerRadius * 2)
         .glassSurface(in: Capsule())
@@ -334,7 +378,11 @@ final class RadialView: NSView {
     var onDragSessionEnded: (() -> Void)?
     /// Menü-Modus: Radtaste gedrückt (z.B. Command) -> anderes Rad zeigen, wie im Original.
     var onWheelChange: ((AppSettings.Wheel) -> Void)?
-    var interactive = false
+    /// Menü-Modus: Tasten, die beim Öffnen schon gehalten werden (⌃⌥ vom Kurzbefehl), wechseln nichts.
+    var interactive = false { didSet { if interactive { keys = WheelKeyTracker(start: NSEvent.modifierFlags) } } }
+    var keys = WheelKeyTracker()
+    /// Aktives Rad, für die Radleiste und die Wechsel-Animation.
+    var wheel: AppSettings.Wheel = .convert { didSet { if oldValue != wheel { refresh() } } }
     var advancedMode = false { didSet { refresh() } }
     /// Taste, mit der das Rad geöffnet wurde (nil, wenn über das Menü geöffnet).
     var modeKey: DragKey? { didSet { refresh() } }
@@ -413,7 +461,8 @@ final class RadialView: NSView {
             modeKey: modeKey,
             emptyMessage: emptyMessage,
             emptyDetail: subtitle,
-            geometry: geometry
+            geometry: geometry,
+            wheel: wheel
         )
     }
 
@@ -486,11 +535,7 @@ final class RadialView: NSView {
 
     override func flagsChanged(with event: NSEvent) {
         guard interactive else { return super.flagsChanged(with: event) }
-        let settings = AppSettings.shared
-        for wheel in [AppSettings.Wheel.actions, .tools, .convert] where event.modifierFlags.contains(settings.key(for: wheel).flag) {
-            onWheelChange?(wheel)
-            return
-        }
+        if let wheel = keys.pressed(keyCode: event.keyCode, flags: event.modifierFlags, settings: AppSettings.shared) { onWheelChange?(wheel) }
     }
 
     override func keyDown(with event: NSEvent) {

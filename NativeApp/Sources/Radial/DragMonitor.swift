@@ -1,8 +1,9 @@
 import AppKit
 
 protocol DragMonitorDelegate: AnyObject {
-    func dragMonitor(_ monitor: DragMonitor, didBeginModifiedDrag urls: [URL], at point: NSPoint, advanced: Bool)
-    func dragMonitor(_ monitor: DragMonitor, didChangeModifiers shift: Bool, option: Bool, at point: NSPoint)
+    func dragMonitor(_ monitor: DragMonitor, didBeginModifiedDrag urls: [URL], at point: NSPoint, wheel: AppSettings.Wheel)
+    /// wheel == nil: nur der Zeiger hat sich bewegt
+    func dragMonitor(_ monitor: DragMonitor, didChangeWheel wheel: AppSettings.Wheel?, at point: NSPoint)
     func dragMonitor(_ monitor: DragMonitor, didUpdateDraggedURLs urls: [URL])
     func dragMonitorDidEndDrag(_ monitor: DragMonitor)
 }
@@ -24,8 +25,63 @@ enum DragDebug {
     }
 }
 
+/// Merkt sich, welche Radtasten frisch gedrückt wurden.
+/// Tasten, die beim Start schon gehalten wurden (z.B. ⌘ vom Auswählen mehrerer Dateien oder ⌃⌥ vom Kurzbefehl),
+/// öffnen und wechseln nichts. Sie zählen erst wieder, nachdem sie losgelassen und neu gedrückt wurden.
+/// Loslassen ändert das Rad nie: Das zuletzt getippte Rad bleibt, bis eine andere Radtaste getippt wird.
+struct WheelKeyTracker {
+    static let relevant: NSEvent.ModifierFlags = [.shift, .command, .option, .control]
+    private(set) var held: NSEvent.ModifierFlags
+    private var stale: NSEvent.ModifierFlags
+
+    init(start: NSEvent.ModifierFlags = []) {
+        held = start.intersection(Self.relevant)
+        stale = held
+    }
+
+    /// Diese Taste wurde gerade sicher neu gedrückt (Tastencode aus einem flagsChanged-Ereignis).
+    /// Ein verpasstes Loslassen davor (z.B. bevor das Rad Tastatureingaben bekam) blockiert sie so nicht.
+    mutating func pressed(keyCode: UInt16, flags: NSEvent.ModifierFlags, settings: AppSettings) -> AppSettings.Wheel? {
+        let flag: NSEvent.ModifierFlags? = switch keyCode {
+        case 54, 55: .command
+        case 56, 60: .shift
+        case 58, 61: .option
+        case 59, 62: .control
+        default: nil
+        }
+        if let flag, flags.contains(flag) {
+            held.remove(flag)
+            stale.remove(flag)
+        }
+        return update(flags, settings: settings)
+    }
+
+    /// Neue Tastenlage; gibt das gewünschte Rad zurück, wenn eine Radtaste frisch gedrückt wurde.
+    mutating func update(_ flags: NSEvent.ModifierFlags, settings: AppSettings) -> AppSettings.Wheel? {
+        let now = flags.intersection(Self.relevant)
+        let pressed = now.subtracting(held)
+        stale = stale.intersection(now)
+        held = now
+        guard !pressed.isEmpty else { return nil }
+        let active = now.subtracting(stale)
+        let convert = settings.key(for: .convert), tools = settings.key(for: .tools), actions = settings.key(for: .actions)
+        if pressed.contains(tools.flag) { return .tools }
+        if pressed.contains(actions.flag) { return .actions }
+        // Option + Umrechnungstaste bleibt zweiter Weg zum Werkzeugrad (Command verschiebt im Finder).
+        if tools == .command, convert != .option, active.contains(.option), active.contains(convert.flag),
+           pressed.contains(.option) || pressed.contains(convert.flag) {
+            return .tools
+        }
+        if pressed.contains(convert.flag) { return .convert }
+        return nil
+    }
+}
+
 final class DragMonitor {
     weak var delegate: DragMonitorDelegate?
+    private var keys = WheelKeyTracker()
+    /// Zuletzt frisch getipptes Rad in diesem Zieh-Vorgang (auch wenn die Taste vor dem Erkennen des Ziehens kam).
+    private var requestedWheel: AppSettings.Wheel?
 
     private var monitors: [Any] = []
     private var pollTimer: Timer?
@@ -99,19 +155,6 @@ final class DragMonitor {
 
     private var buttonPressed: Bool { NSEvent.pressedMouseButtons & 1 == 1 }
 
-    /// shift = irgendeine Radtaste gedrückt, option = Werkzeugrad gewünscht.
-    private var currentModifiers: (shift: Bool, option: Bool) {
-        Self.wheelState(flags: NSEvent.modifierFlags, settings: AppSettings.shared)
-    }
-
-    static func wheelState(flags: NSEvent.ModifierFlags, settings: AppSettings) -> (shift: Bool, option: Bool) {
-        let keys = [settings.key(for: .convert), settings.key(for: .tools), settings.key(for: .actions)]
-        let any = keys.contains { flags.contains($0.flag) }
-        let tools = settings.key(for: .tools)
-        // Option + Umrechnungstaste bleibt als zweiter Weg zum Werkzeugrad (Command verschiebt im Finder).
-        let alternate = tools == .command && flags.contains(.option) && flags.contains(settings.key(for: .convert).flag)
-        return (any, flags.contains(tools.flag) || alternate)
-    }
 
     private func beginPressIfNeeded() {
         guard !mouseDown else { return }
@@ -119,6 +162,8 @@ final class DragMonitor {
         handled = false
         dragInFlight = false
         activeURLs = []
+        keys = WheelKeyTracker(start: NSEvent.modifierFlags)
+        requestedWheel = nil
         pressOrigin = NSEvent.mouseLocation
         pressTime = Date()
         let sourceApplication = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
@@ -140,14 +185,19 @@ final class DragMonitor {
         beginPressIfNeeded()
         guard !pressExcluded else { return }
         refreshDragPasteboard()
-        if !dragInFlight, pressInFinder, currentModifiers.shift, Date().timeIntervalSince(pressTime) >= Self.fallbackDelay, hypot(NSEvent.mouseLocation.x - pressOrigin.x, NSEvent.mouseLocation.y - pressOrigin.y) >= Self.fallbackDragDistance {
+        let changed = keys.update(NSEvent.modifierFlags, settings: AppSettings.shared)
+        if let changed {
+            requestedWheel = changed
+            DragDebug.log("wheel key tapped: \(changed)")
+        }
+        if !dragInFlight, pressInFinder, requestedWheel != nil, Date().timeIntervalSince(pressTime) >= Self.fallbackDelay, hypot(NSEvent.mouseLocation.x - pressOrigin.x, NSEvent.mouseLocation.y - pressOrigin.y) >= Self.fallbackDragDistance {
             dragInFlight = true
             DragDebug.log("no drag pasteboard content; assuming Finder drag from movement")
         }
-        evaluateModifiers()
+        evaluateModifiers(changed: changed)
         pollTick += 1
         if pollTick % 30 == 0 {
-            DragDebug.log("poll: loc=\(NSEvent.mouseLocation) shift=\(currentModifiers.shift) option=\(currentModifiers.option) inFlight=\(dragInFlight) urls=\(activeURLs.count) presenting=\(presenting) handled=\(handled)")
+            DragDebug.log("poll: loc=\(NSEvent.mouseLocation) wheel=\(String(describing: requestedWheel)) inFlight=\(dragInFlight) urls=\(activeURLs.count) presenting=\(presenting) handled=\(handled)")
         }
     }
 
@@ -185,16 +235,15 @@ final class DragMonitor {
         }
     }
 
-    private func evaluateModifiers() {
+    private func evaluateModifiers(changed: AppSettings.Wheel?) {
         guard mouseDown, dragInFlight, !handled else { return }
-        let mods = currentModifiers
         let point = NSEvent.mouseLocation
-        if mods.shift, !presenting {
+        if !presenting, let wheel = requestedWheel {
             presenting = true
-            DragDebug.log("presenting wheel for \(activeURLs.map(\.lastPathComponent)) at \(point) option=\(mods.option)")
-            delegate?.dragMonitor(self, didBeginModifiedDrag: activeURLs, at: point, advanced: mods.option)
+            DragDebug.log("presenting \(wheel) wheel for \(activeURLs.map(\.lastPathComponent)) at \(point)")
+            delegate?.dragMonitor(self, didBeginModifiedDrag: activeURLs, at: point, wheel: wheel)
         } else if presenting {
-            delegate?.dragMonitor(self, didChangeModifiers: mods.shift, option: mods.option, at: point)
+            delegate?.dragMonitor(self, didChangeWheel: changed, at: point)
         }
     }
 
@@ -204,6 +253,7 @@ final class DragMonitor {
         dragInFlight = false
         handled = false
         activeURLs = []
+        requestedWheel = nil
         endActivity()
         schedulePoll(interval: Self.idleInterval)
         if presenting {

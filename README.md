@@ -10,11 +10,11 @@
 
 | While dragging files in Finder | Wheel | Examples |
 |---|---|---|
-| tap **Shift** | Convert | PNG → JPEG, HEIC → WebP, MP4 → GIF or M4A, DOCX → PDF, CSV → XLSX |
+| tap **Shift** | Convert | PNG → JPEG, HEIC → WebP, MP4 → GIF or M4A, DOCX → PDF, CSV → XLSX, print |
 | tap **Command** | Tools | compress, edit, annotate, crop, redact, remove background, read QR codes, PDF and video tools |
 | tap **Control** | File actions | AirDrop, print, shelf, copy paths, move, ZIP, open in Terminal, SHA-256 |
 
-You can release the key and keep dragging; the wheel stays open until you drop.
+You can release the key and keep dragging; the wheel stays open until you drop. Tap another key to switch wheels, and **Shift** to get back. Keys you were already holding when you started dragging (for example ⌘ from selecting several files) are ignored.
 
 **Without dragging:** select files in Finder and press **⌃⌥ Space**. Choose with the arrow keys, **Return** to apply, **Escape** to close, **Command** or **Control** to switch wheels. All keys can be changed in Settings.
 

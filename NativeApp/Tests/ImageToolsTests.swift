@@ -136,6 +136,7 @@ import PDFKit
         catch OpenTangerineError.invalidInput(let message) { check(message.contains("password"), "locked PDF rejected for printing") }
         let song = dir.appendingPathComponent("song.mp3"), word = dir.appendingPathComponent("brief.docx")
         check(Printing.canPrint([qrPDF, qrURL, text, markdown]) && !Printing.canPrint([qrPDF, song]) && !Printing.canPrint([word]) && !Printing.canPrint([dir]), "printable formats: PDF, images, text only")
+        check(RadialController.printItems(for: [qrURL, qrPDF]).map(\.label) == ["PRINT"] && RadialController.printItems(for: [song]).isEmpty, "PRINT shown in the convert wheel for printable files")
         check(FileAction.wheel(for: [qrURL]).contains(.print) && !FileAction.wheel(for: [song]).contains(.print) && FileAction.wheel(for: [song]).count == FileAction.wheel.count - 1, "Print shown in the actions wheel only for printable files")
         // Beschriften: Rahmen landet als Pixel im Bild, Größe bleibt
         let white = CGContext(data: nil, width: 200, height: 100, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!

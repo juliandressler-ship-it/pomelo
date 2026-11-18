@@ -172,7 +172,16 @@ final class AppSettings: ObservableObject {
     @Published private(set) var toolsKey: DragKey { didSet { defaults.set(toolsKey.rawValue, forKey: "toolsKey") } }
     @Published private(set) var actionsKey: DragKey { didSet { defaults.set(actionsKey.rawValue, forKey: "actionsKey") } }
 
-    enum Wheel { case convert, tools, actions }
+    enum Wheel {
+        case convert, tools, actions
+        var title: String {
+            switch self {
+            case .convert: return "Convert"
+            case .tools: return "Tools"
+            case .actions: return "Actions"
+            }
+        }
+    }
 
     func key(for wheel: Wheel) -> DragKey {
         switch wheel {

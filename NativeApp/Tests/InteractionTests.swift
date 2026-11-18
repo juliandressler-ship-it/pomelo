@@ -92,17 +92,27 @@ final class UpdateResponse: URLProtocol {
         precondition(keys.key(for: .convert) == .command && keys.key(for: .tools) == .shift, "Konflikt muss Tasten tauschen")
         precondition(Set<DragKey>([keys.key(for: .convert), keys.key(for: .tools), keys.key(for: .actions)]).count == 3)
         keys.setKey(.shift, for: .convert); keys.setKey(.command, for: .tools); keys.setKey(.control, for: .actions)
-        var wheel = DragMonitor.wheelState(flags: [.shift], settings: keys)
-        precondition(wheel.shift && !wheel.option, "Shift öffnet das Konvertierungsrad")
-        wheel = DragMonitor.wheelState(flags: [.command], settings: keys)
-        precondition(wheel.shift && wheel.option, "Command öffnet das Werkzeugrad")
-        wheel = DragMonitor.wheelState(flags: [.option, .shift], settings: keys)
-        precondition(wheel.shift && wheel.option, "Option + Shift bleibt zweiter Weg zum Werkzeugrad")
-        wheel = DragMonitor.wheelState(flags: [.option], settings: keys)
-        precondition(!wheel.shift, "Option allein öffnet kein Rad")
+        // Nur frisch getippte Tasten zählen; schon gehaltene Tasten öffnen und wechseln nichts
+        func taps(_ start: NSEvent.ModifierFlags, _ steps: [NSEvent.ModifierFlags]) -> [AppSettings.Wheel?] {
+            var tracker = WheelKeyTracker(start: start)
+            return steps.map { tracker.update($0, settings: keys) }
+        }
+        precondition(taps([], [[.shift]]) == [.convert], "Shift öffnet das Konvertierungsrad")
+        precondition(taps([], [[.command]]) == [.tools], "Command öffnet das Werkzeugrad")
+        precondition(taps([], [[.control]]) == [.actions], "Control öffnet das Aktionsrad")
+        precondition(taps([], [[.option], [.option, .shift]]) == [nil, .tools], "Option halten + Shift bleibt zweiter Weg zum Werkzeugrad")
+        precondition(taps([], [[.shift], [.shift, .option]]) == [.convert, .tools], "Shift halten + Option geht auch")
+        precondition(taps([], [[.option]]) == [nil], "Option allein öffnet kein Rad")
+        precondition(taps([], [[.command], []]) == [.tools, nil], "Loslassen wechselt nicht zurück")
+        precondition(taps([], [[.command], [], [.shift], []]) == [.tools, nil, .convert, nil], "Shift tippen führt zurück")
+        // Der gemeldete Fehler: ⌘ noch vom Auswählen gehalten -> früher sofort Werkzeugrad, Shift kam nicht zurück
+        precondition(taps([.command], [[.command], [.command, .shift]]) == [nil, .convert], "gehaltenes ⌘ beim Start öffnet nichts, Shift wählt Konvertieren")
+        precondition(taps([.command], [[], [.command]]) == [nil, .tools], "⌘ zählt nach Loslassen und neu Drücken wieder")
+        // Kurzbefehl ⌃⌥ Leertaste: ⌃ und ⌥ sind beim Öffnen noch gedrückt
+        precondition(taps([.control, .option], [[.option], [.option, .shift]]) == [nil, .convert], "⌥ vom Kurzbefehl macht Shift nicht zum Werkzeugrad")
+        precondition(taps([.control, .option], [[.control, .option, .shift], [], [.control]]) == [.convert, nil, .actions], "⌃ vom Kurzbefehl wechselt erst nach neuem Drücken")
         keys.setKey(.option, for: .tools)
-        wheel = DragMonitor.wheelState(flags: [.option], settings: keys)
-        precondition(wheel.shift && wheel.option, "Neu belegte Taste öffnet das Werkzeugrad")
+        precondition(taps([], [[.option]]) == [.tools], "Neu belegte Taste öffnet das Werkzeugrad")
         keys.setKey(saved.0, for: .convert); keys.setKey(saved.1, for: .tools); keys.setKey(saved.2, for: .actions)
 
         // Schreibtisch: kein zusätzliches Finder-Fenster
@@ -114,7 +124,7 @@ final class UpdateResponse: URLProtocol {
         keys.skipRevealOnDesktop = false
         precondition(!JobRunner.onlyOnDesktop([desktop.appendingPathComponent("a.png")], settings: keys))
         keys.skipRevealOnDesktop = previousSkip
-        print("PASS configurable wheel keys without duplicates, Option+Shift fallback, desktop reveal rule")
+        print("PASS configurable wheel keys without duplicates, fresh key taps only, Option+Shift fallback, desktop reveal rule")
 
         // Kontrolle: Tastatursteuerung im Rad wie im Original (Pfeile, Enter, Escape, Command/Control wechseln)
         let quiet = (keys.soundEnabled, keys.hapticsEnabled)
@@ -152,9 +162,16 @@ final class UpdateResponse: URLProtocol {
         precondition(cancelled, "Escape cancels")
         modifiers([.command], 55); modifiers([.control], 59); modifiers([.shift], 56); modifiers([], 56)
         precondition(switched == [.tools, .actions, .convert], "Command/Control/Shift switch wheels: \(switched)")
+        wheelView.keys = WheelKeyTracker(start: [.control, .option])
+        modifiers([.control, .option, .shift], 56)
+        precondition(switched == [.tools, .actions, .convert, .convert], "held hotkey keys do not switch, Shift does: \(switched)")
+        // Loslassen von ⌃ verpasst (Rad war noch nicht aktiv): neues Drücken von ⌃ wechselt trotzdem
+        wheelView.keys = WheelKeyTracker(start: [.control, .option])
+        modifiers([.control], 59)
+        precondition(switched.last == .actions, "missed release does not block Control: \(switched)")
         wheelView.interactive = false
         modifiers([.command], 55)
-        precondition(switched.count == 3, "no switching while dragging")
+        precondition(switched.count == 5, "no switching while dragging")
         keys.soundEnabled = quiet.0; keys.hapticsEnabled = quiet.1
         // Ordner bleiben in der Zieh-Auswahl (für das Aktionsrad)
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("ot-folder-\(UUID())")

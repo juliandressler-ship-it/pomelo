@@ -36,26 +36,23 @@ final class RadialController: DragMonitorDelegate {
 
     weak var dragMonitor: DragMonitor?
 
-    func dragMonitor(_ monitor: DragMonitor, didBeginModifiedDrag urls: [URL], at point: NSPoint, advanced: Bool) {
+    func dragMonitor(_ monitor: DragMonitor, didBeginModifiedDrag urls: [URL], at point: NSPoint, wheel: AppSettings.Wheel) {
         dragMonitor = monitor
         pickerMode = false
-        actions = NSEvent.modifierFlags.contains(AppSettings.shared.key(for: .actions).flag)
-        present(urls: urls, at: point, advanced: advanced)
+        actions = wheel == .actions
+        present(urls: urls, at: point, advanced: wheel == .tools)
     }
 
-    func dragMonitor(_ monitor: DragMonitor, didChangeModifiers shift: Bool, option: Bool, at point: NSPoint) {
+    func dragMonitor(_ monitor: DragMonitor, didChangeWheel wheel: AppSettings.Wheel?, at point: NSPoint) {
         guard !pickerMode else { return }
-        if !shift { return }
-        let newActions = NSEvent.modifierFlags.contains(AppSettings.shared.key(for: .actions).flag)
-        if actions != newActions { actions = newActions; reloadItems() }
         if !visible {
-            present(urls: urls, at: point, advanced: option)
+            if let wheel {
+                actions = wheel == .actions
+                present(urls: urls, at: point, advanced: wheel == .tools)
+            }
             return
         }
-        if option != advanced {
-            advanced = option
-            reloadItems()
-        }
+        if let wheel { switchWheel(wheel) }
         // AppKit can delay destination updates while the source app owns the drag.
         // The monitor already polls at 60 Hz; use its screen position for immediate hover.
         if let panel {
@@ -100,7 +97,7 @@ final class RadialController: DragMonitorDelegate {
         view.interactive = pickerMode
         view.advancedMode = advanced
         view.modeKey = modeKey
-        let clamped = clampedCenter(point, in: screen.frame, radius: view.discRadius + 48)
+        let clamped = clampedCenter(point, in: screen.frame, radius: view.discRadius + 48, below: view.discRadius + RadialWheelView.captionHeight + 12)
         view.center = NSPoint(x: clamped.x - screen.frame.minX, y: clamped.y - screen.frame.minY)
         view.onSelect = { [weak self] item in self?.select(item) }
         view.onCancel = { [weak self] in self?.hide() }
@@ -120,10 +117,11 @@ final class RadialController: DragMonitorDelegate {
         Task { @MainActor in JobRunner.shared.beginWatching() }
     }
 
-    private func clampedCenter(_ point: NSPoint, in frame: NSRect, radius: CGFloat) -> NSPoint {
+    /// Rad ganz auf dem Bildschirm halten; unten ist zusätzlich Platz für Aktionszeile und Radleiste nötig.
+    private func clampedCenter(_ point: NSPoint, in frame: NSRect, radius: CGFloat, below: CGFloat) -> NSPoint {
         NSPoint(
             x: min(max(point.x, frame.minX + radius), frame.maxX - radius),
-            y: min(max(point.y, frame.minY + radius), frame.maxY - radius)
+            y: min(max(point.y, frame.minY + below), frame.maxY - radius)
         )
     }
 
@@ -155,15 +153,20 @@ final class RadialController: DragMonitorDelegate {
         return settings.key(for: actions ? .actions : advanced ? .tools : .convert)
     }
 
-    /// Im Menü-Modus zwischen Konvertieren, Werkzeugen und Aktionen wechseln.
+    /// Zwischen Konvertieren, Werkzeugen und Aktionen wechseln (beim Ziehen und im Menü-Modus).
     func switchWheel(_ wheel: AppSettings.Wheel) {
         let newActions = wheel == .actions, newAdvanced = wheel == .tools
         guard newActions != actions || newAdvanced != advanced, let view = panel?.radialView else { return }
         actions = newActions
         advanced = newAdvanced
+        view.modeKey = modeKey
         view.clearHighlight()
         reloadItems()
-        if !view.items.isEmpty { view.highlight(0) } // löst Ton/Haptik über die Hervorhebung aus
+        if pickerMode {
+            if !view.items.isEmpty { view.highlight(0) } // löst Ton/Haptik über die Hervorhebung aus
+        } else {
+            MainActor.assumeIsolated { Feedback.hover() }
+        }
     }
 
     /// Nur für Tests: aktueller Zustand des Rads.
@@ -174,7 +177,8 @@ final class RadialController: DragMonitorDelegate {
         guard let view = panel?.radialView else { return }
         view.advancedMode = advanced
         view.modeKey = modeKey
-        view.idleTitle = actions ? "Actions" : advanced ? "Tools" : "Convert"
+        view.idleTitle = currentWheel.title
+        view.wheel = currentWheel
         let count = urls.count
         if count == 0 {
             view.items = []
@@ -192,7 +196,7 @@ final class RadialController: DragMonitorDelegate {
             view.items = []
             let folders = urls.contains { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true && FileFormat.detect($0)?.isPackage != true }
             view.emptyMessage = folders ? "Folders work with file actions" : "Selection includes unsupported files"
-            if folders { view.subtitle = "Hold \(AppSettings.shared.key(for: .actions).title) for AirDrop, ZIP, Move and more" }
+            if folders { view.subtitle = "Tap \(AppSettings.shared.key(for: .actions).title) for AirDrop, ZIP, Move and more" }
             return
         }
         if advanced {
@@ -210,8 +214,14 @@ final class RadialController: DragMonitorDelegate {
             view.items = extras.map(RadialItem.init(fileAction:))
                 + pdfTools.filter { $0.applies(to: formats) }.map(RadialItem.init(tool:))
                 + ConversionMatrix.targets(for: formats).map(RadialItem.init(format:))
+                + Self.printItems(for: urls)
             view.emptyMessage = count > 1 ? "No shared conversion for these files" : "No conversions available"
         }
+    }
+
+    /// "Print" steht auch im Konvertierungsrad (letztes Segment), wenn alle Dateien druckbar sind.
+    static func printItems(for urls: [URL]) -> [RadialItem] {
+        Printing.canPrint(urls) ? [RadialItem(fileAction: .print, label: "PRINT")] : []
     }
 
     private func select(_ item: RadialItem) {

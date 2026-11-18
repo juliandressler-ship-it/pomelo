@@ -12,7 +12,7 @@
 |---|---|---|
 | tap **Shift** | Convert | PNG → JPEG, HEIC → WebP, MP4 → GIF or M4A, DOCX → PDF, CSV → XLSX |
 | tap **Command** | Tools | compress, edit, annotate, crop, redact, remove background, read QR codes, PDF and video tools |
-| tap **Control** | File actions | AirDrop, shelf, copy paths, move, ZIP, open in Terminal, SHA-256 |
+| tap **Control** | File actions | AirDrop, print, shelf, copy paths, move, ZIP, open in Terminal, SHA-256 |
 
 You can release the key and keep dragging; the wheel stays open until you drop.
 
@@ -32,6 +32,7 @@ You can release the key and keep dragging; the wheel stays open until you drop.
 | Video | MP4, MOV, MKV, WebM, AVI, WMV, GIF; input also FLV, MTS, MPG, 3GP; extract the sound track, trim, split, join, crop, speed, frames, redact, compress |
 | Subtitles | SRT, VTT, TXT |
 | Archives | ZIP, TAR and TAR.GZ to each other; extract ZIP, TAR, GZIP and RAR with checks against unsafe archives |
+| Printing | PDFs, images, TXT, Markdown, RTF and RTFD through the macOS print dialog, several files as one job |
 
 ## Private by design
 

@@ -122,6 +122,21 @@ import PDFKit
         let pdfCodes = try VisionOps.codes(in: qrPDF)
         check(pdfCodes.first?.text == "https://example.com/open-tangerine" && pdfCodes.first?.page == 1, "QR code read from PDF page 1")
         check(try VisionOps.codes(in: original).isEmpty, "no code in noise image")
+        // Drucken: PDF, Bild und Text werden ein Druckauftrag; Gesperrtes und Nicht-Druckbares wird abgelehnt
+        let printDoc = try await Printing.document(for: [qrPDF, qrURL, text])
+        check(printDoc.pageCount == 3, "print job combines PDF, image and text pages")
+        check(printDoc.page(at: 2)?.string?.contains("abc") == true, "print job text page has real text")
+        let qrSize = printDoc.page(at: 1)?.bounds(for: .mediaBox).size
+        check(qrSize?.width == CGFloat(qrImage.width) && qrSize?.height == CGFloat(qrImage.height), "print job image page keeps image proportions")
+        let markdown = dir.appendingPathComponent("print.md"); try Data("# Title\n\nSome *text*".utf8).write(to: markdown)
+        check(try await Printing.document(for: [markdown]).page(at: 0)?.string?.contains("Title") == true, "markdown prints as formatted text")
+        let locked = dir.appendingPathComponent("locked.pdf")
+        check(PDFDocument(url: qrPDF)!.write(to: locked, withOptions: [.userPasswordOption: "geheim", .ownerPasswordOption: "geheim2"]), "locked PDF fixture writes")
+        do { _ = try await Printing.document(for: [locked]); check(false, "locked PDF rejected for printing") }
+        catch OpenTangerineError.invalidInput(let message) { check(message.contains("password"), "locked PDF rejected for printing") }
+        let song = dir.appendingPathComponent("song.mp3"), word = dir.appendingPathComponent("brief.docx")
+        check(Printing.canPrint([qrPDF, qrURL, text, markdown]) && !Printing.canPrint([qrPDF, song]) && !Printing.canPrint([word]) && !Printing.canPrint([dir]), "printable formats: PDF, images, text only")
+        check(FileAction.wheel(for: [qrURL]).contains(.print) && !FileAction.wheel(for: [song]).contains(.print) && FileAction.wheel(for: [song]).count == FileAction.wheel.count - 1, "Print shown in the actions wheel only for printable files")
         // Beschriften: Rahmen landet als Pixel im Bild, Größe bleibt
         let white = CGContext(data: nil, width: 200, height: 100, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
         white.setFillColor(CGColor(gray: 1, alpha: 1)); white.fill(CGRect(x: 0, y: 0, width: 200, height: 100))

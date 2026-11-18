@@ -184,7 +184,7 @@ final class RadialController: DragMonitorDelegate {
         }
         view.subtitle = count == 1 ? urls[0].lastPathComponent : "\(count) files"
         if actions {
-            view.items = FileAction.wheel.map(RadialItem.init(fileAction:))
+            view.items = FileAction.wheel(for: urls).map(RadialItem.init(fileAction:))
             view.emptyMessage = "No file actions"
             return
         }

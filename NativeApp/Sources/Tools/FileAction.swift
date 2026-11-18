@@ -2,7 +2,7 @@ import AppKit
 import CryptoKit
 
 enum FileAction: String, CaseIterable, Hashable {
-    case reveal = "Reveal", airdrop = "AirDrop", float = "Float", copy = "Copy Files", paths = "Copy Paths"
+    case reveal = "Reveal", airdrop = "AirDrop", print = "Print", float = "Float", copy = "Copy Files", paths = "Copy Paths"
     case move = "Move", duplicate = "Duplicate", zip = "ZIP", terminal = "Terminal", hash = "SHA-256"
     // Nur im Konvertierungsrad: Archive entpacken, PDF als PDF/A sichern
     case extract = "EXTRACT", pdfa = "PDF/A"
@@ -10,12 +10,18 @@ enum FileAction: String, CaseIterable, Hashable {
     case removeBackground = "REMOVE BG", readCodes = "READ CODE"
 
     /// Reihenfolge im Aktionsrad (Control).
-    static let wheel: [FileAction] = [.reveal, .airdrop, .float, .copy, .paths, .move, .duplicate, .zip, .terminal, .hash]
+    static let wheel: [FileAction] = [.reveal, .airdrop, .print, .float, .copy, .paths, .move, .duplicate, .zip, .terminal, .hash]
+
+    /// Aktionsrad für diese Auswahl: "Print" nur, wenn sich alle Dateien drucken lassen.
+    static func wheel(for urls: [URL]) -> [FileAction] {
+        Printing.canPrint(urls) ? wheel : wheel.filter { $0 != .print }
+    }
 
     var symbol: String {
         switch self {
         case .reveal: return "folder"
         case .airdrop: return "airplayaudio"
+        case .print: return "printer"
         case .float: return "rectangle.on.rectangle"
         case .copy: return "doc.on.doc"
         case .paths: return "link"
@@ -35,6 +41,7 @@ enum FileAction: String, CaseIterable, Hashable {
         switch self {
         case .reveal: return "Show in Finder"
         case .airdrop: return "Send with AirDrop"
+        case .print: return "Open the print dialog"
         case .float: return "Keep on the shelf"
         case .copy: return "Copy files"
         case .paths: return "Copy paths"
@@ -83,6 +90,8 @@ enum FileAction: String, CaseIterable, Hashable {
                 return
             }
             service.perform(withItems: urls)
+        case .print:
+            Printing.print(urls)
         case .float:
             FloatShelf.shared.add(urls)
         case .move:
